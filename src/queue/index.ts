@@ -12,3 +12,7 @@ export const blogTitleAndSummaryQueue = new Queue(
     connection: redis,
   }
 );
+
+export const blogContentQueue = new Queue(QUEUES.BLOG_CONTENT, {
+  connection: redis,
+});

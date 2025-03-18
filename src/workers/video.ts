@@ -6,7 +6,10 @@ import {
 } from "../lib/constants.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
-import { getBlogTitleAndSummaryTotalJobsRedisKey } from "../lib/redis-keys.js";
+import {
+  getBlogTitleAndSummaryCompletedJobsRedisKey,
+  getBlogTitleAndSummaryTotalJobsRedisKey,
+} from "../lib/redis-keys.js";
 import redis from "../lib/redis.js";
 import { splitTranscript } from "../lib/split-transcript.js";
 import { blogTitleAndSummaryQueue } from "../queue/index.js";
@@ -19,6 +22,8 @@ export const videoWorker = new Worker(
     const { videoId } = job.data;
     const blogTitleAndSummaryTotalJobsRedisKey =
       getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
+    const blogTitleAndSummaryCompletedJobsRedisKey =
+      getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
     try {
       console.log("Inside worker/video.ts");
       console.log("job.data is ", job.data);
@@ -73,6 +78,7 @@ export const videoWorker = new Worker(
         blogTitleAndSummaryTotalJobsRedisKey,
         totalBlogTitleAndSummaryJobs
       );
+      redis.set(blogTitleAndSummaryCompletedJobsRedisKey, 0);
 
       for (let i = 0; i < blogs.length; i += batchSize) {
         const batch = blogs.slice(i, i + batchSize);

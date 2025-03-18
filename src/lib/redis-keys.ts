@@ -1,7 +1,15 @@
 export function getBlogTitleAndSummaryTotalJobsRedisKey(videoId: string) {
-  return `${videoId}:totalBlogTitleAndSummaryJobs`;
+  return `${videoId}:blogTitleAndSummaryTotalJobs`;
 }
 
 export function getBlogTitleAndSummaryCompletedJobsRedisKey(videoId: string) {
-  return `${videoId}:completedBlogTitleAndSummaryJobs`;
+  return `${videoId}:blogTitleAndSummaryCompletedJobs`;
+}
+
+export function getBlogContentCompletedJobsRedisKey(videoId: string) {
+  return `${videoId}:blogContentCompletedJobs`;
+}
+
+export function getBlogContentTotalJobsRedisKey(videoId: string) {
+  return `${videoId}:blogContentTotalJobs`;
 }

@@ -123,10 +123,7 @@ export async function generateVideoOverview(videoId: string) {
     });
 
     if (blogs.length === 0) {
-      return {
-        success: false,
-        message: `No summaries found for videoId: ${videoId}`,
-      };
+      throw new Error(`No summaries found for videoId: ${videoId}`);
     }
 
     console.log(`Found ${blogs.length} summaries for videoId: ${videoId}`);
@@ -169,25 +166,13 @@ export async function generateVideoOverview(videoId: string) {
 
     console.log(`Generated overview for videoId: ${videoId}:`, overview);
 
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { overview },
-    });
-
-    return {
-      success: true,
-      overview,
-    };
+    return overview;
   } catch (error) {
     if (error instanceof Error) {
       console.error("error.stack is ", error.stack);
       console.error("error.message is ", error.message);
     }
-    return {
-      success: false,
-      message:
-        error instanceof Error ? error.message : "Unknown error occurred",
-    };
+    throw error;
   }
 }
 
@@ -238,5 +223,6 @@ export async function generateBlogContent(
       console.log("error.stack is ", error.stack);
       console.log("error.message is ", error.message);
     }
+    throw error;
   }
 }

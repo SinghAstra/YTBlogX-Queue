@@ -1,10 +1,18 @@
 import { Blog } from "@prisma/client";
 import { Worker } from "bullmq";
 import { QUEUES } from "../lib/constants.js";
-import { generateTitleAndSummaries } from "../lib/gemini.js";
+import {
+  generateTitleAndSummaries,
+  generateVideoOverview,
+} from "../lib/gemini.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  getBlogTitleAndSummaryCompletedJobsRedisKey,
+  getBlogTitleAndSummaryTotalJobsRedisKey,
+} from "../lib/redis-keys.js";
 import redis from "../lib/redis.js";
+import { blogContentQueue } from "../queue/index.js";
 
 // Function to update summaries in the database
 async function updateTitlesAndSummaries(
@@ -20,10 +28,70 @@ async function updateTitlesAndSummaries(
   return await prisma.$transaction(updatePromises);
 }
 
+async function checkAllJobsCompleted(videoId: string) {
+  const blogTitleAndSummaryTotalJobsRedisKey =
+    getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
+  const blogTitleAndSummaryCompletedJobsRedisKey =
+    getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
+
+  const blogTitleAndSummaryTotalJobs = await redis.get(
+    blogTitleAndSummaryTotalJobsRedisKey
+  );
+  const blogTitleAndSummaryCompletedJobs = await redis.get(
+    blogTitleAndSummaryCompletedJobsRedisKey
+  );
+
+  console.log("-------------------------------------------------------");
+  console.log("blogTitleAndSummaryTotalJobs is ", blogTitleAndSummaryTotalJobs);
+  console.log(
+    "blogTitleAndSummaryCompletedJobs is ",
+    blogTitleAndSummaryCompletedJobs
+  );
+  console.log("-------------------------------------------------------");
+  if (blogTitleAndSummaryTotalJobs === blogTitleAndSummaryCompletedJobs) {
+    logger.info("-------------------------------------------------------");
+    logger.info(
+      "Inside the if of blogTitleAndSummaryTotalJobs === blogTitleAndSummaryCompletedJobs"
+    );
+    logger.info("-------------------------------------------------------");
+
+    // Generate video overview
+    const overview = await generateVideoOverview(videoId);
+
+    await prisma.video.update({
+      where: { id: videoId },
+      data: { overview },
+    });
+
+    const blogs = await prisma.blog.findMany({
+      where: {
+        videoId,
+      },
+    });
+
+    blogs.map((blog) => {
+      blogContentQueue.add(
+        QUEUES.BLOG_CONTENT,
+        { blog },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
+    });
+  }
+}
+
 export const blogTitleAndSummaryWorker = new Worker(
   QUEUES.BLOG_TITLE_AND_SUMMARY,
   async (job) => {
     const { videoId } = job.data;
+    const blogTitleAndSummaryCompletedJobsRedisKey =
+      getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
+
     try {
       const blogs: Blog[] = job.data.blogs;
 
@@ -50,10 +118,7 @@ export const blogTitleAndSummaryWorker = new Worker(
         }
       }
 
-      return {
-        success: true,
-        message: `Processed ${blogs.length} transcripts for video ${videoId}`,
-      };
+      await redis.incr(blogTitleAndSummaryCompletedJobsRedisKey);
     } catch (error) {
       if (error instanceof Error) {
         console.log("error.stack is ", error.stack);
@@ -65,11 +130,8 @@ export const blogTitleAndSummaryWorker = new Worker(
         where: { id: videoId },
         data: { processingState: "FAILED" },
       });
-
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : "Unknown error",
-      };
+    } finally {
+      await checkAllJobsCompleted(videoId);
     }
   },
   {
