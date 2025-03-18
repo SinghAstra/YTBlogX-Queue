@@ -1,0 +1,7 @@
+import { Queue } from "bullmq";
+import { QUEUES } from "../lib/constants";
+import redis from "../lib/redis";
+
+export const videoQueue = new Queue(QUEUES.VIDEO, {
+  connection: redis,
+});
