@@ -42,6 +42,8 @@ export const blogContentWorker = new Worker(
   async (job) => {
     const { blog } = job.data;
     const videoId = blog.videoId;
+    const blogContentCompletedJobsRedisKey =
+      getBlogContentCompletedJobsRedisKey(videoId);
     try {
       const video = await prisma.video.findUnique({ where: { id: videoId } });
       const allBlogs = await prisma.blog.findMany({
@@ -71,6 +73,8 @@ export const blogContentWorker = new Worker(
           content: blogData,
         },
       });
+
+      await redis.incr(blogContentCompletedJobsRedisKey);
     } catch (error) {
       console.log("Error in Blog Content Worker");
       if (error instanceof Error) {
@@ -104,7 +108,7 @@ blogContentWorker.on("completed", (job) => {
 
 // Gracefully shutdown Prisma when worker exits
 const shutdown = async () => {
-  console.log("Shutting down worker gracefully...");
+  console.log("Shutting down blog content worker gracefully...");
   await prisma.$disconnect();
   process.exit(0);
 };

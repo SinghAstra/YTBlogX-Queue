@@ -88,7 +88,7 @@ export const videoWorker = new Worker(
           } of ${totalBlogTitleAndSummaryJobs} to blog title and summary`
         );
 
-        blogTitleAndSummaryQueue.add(
+        await blogTitleAndSummaryQueue.add(
           QUEUES.BLOG_TITLE_AND_SUMMARY,
           { videoId: video.id, blogs: batch },
           {
@@ -133,12 +133,14 @@ videoWorker.on("failed", (job, error) => {
 });
 
 videoWorker.on("completed", (job) => {
-  logger.success(`Job ${job.id} in video worker completed successfully`);
+  logger.success(
+    `Job ${job.id} in video worker completed successfully --Updated`
+  );
 });
 
 // Gracefully shutdown Prisma when worker exits
 const shutdown = async () => {
-  console.log("Shutting down worker gracefully...");
+  console.log("Shutting down video worker gracefully...");
   await prisma.$disconnect();
   process.exit(0);
 };

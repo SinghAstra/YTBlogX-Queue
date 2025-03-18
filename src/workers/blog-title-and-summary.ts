@@ -8,6 +8,8 @@ import {
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import {
+  getBlogContentCompletedJobsRedisKey,
+  getBlogContentTotalJobsRedisKey,
   getBlogTitleAndSummaryCompletedJobsRedisKey,
   getBlogTitleAndSummaryTotalJobsRedisKey,
 } from "../lib/redis-keys.js";
@@ -33,6 +35,10 @@ async function checkAllJobsCompleted(videoId: string) {
     getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
   const blogTitleAndSummaryCompletedJobsRedisKey =
     getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
+
+  const blogContentCompletedJobsRedisKey =
+    getBlogContentCompletedJobsRedisKey(videoId);
+  const blogContentTotalJobsRedisKey = getBlogContentTotalJobsRedisKey(videoId);
 
   const blogTitleAndSummaryTotalJobs = await redis.get(
     blogTitleAndSummaryTotalJobsRedisKey
@@ -69,8 +75,11 @@ async function checkAllJobsCompleted(videoId: string) {
       },
     });
 
-    blogs.map((blog) => {
-      blogContentQueue.add(
+    redis.set(blogContentCompletedJobsRedisKey, 0);
+    redis.set(blogContentTotalJobsRedisKey, blogs.length);
+
+    blogs.map(async (blog) => {
+      await blogContentQueue.add(
         QUEUES.BLOG_CONTENT,
         { blog },
         {
@@ -154,7 +163,7 @@ blogTitleAndSummaryWorker.on("completed", (job) => {
 
 // Gracefully shutdown Prisma when worker exits
 const shutdown = async () => {
-  console.log("Shutting down worker gracefully...");
+  console.log("Shutting down blog title and summary worker gracefully...");
   await prisma.$disconnect();
   process.exit(0);
 };
