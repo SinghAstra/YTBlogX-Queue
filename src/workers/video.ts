@@ -6,6 +6,7 @@ import {
 } from "../lib/constants.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { getBlogTitleAndSummaryTotalJobsRedisKey } from "../lib/redis-keys.js";
 import redis from "../lib/redis.js";
 import { splitTranscript } from "../lib/split-transcript.js";
 import { blogTitleAndSummaryQueue } from "../queue/index.js";
@@ -16,6 +17,8 @@ export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
     const { videoId } = job.data;
+    const blogTitleAndSummaryTotalJobsRedisKey =
+      getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
     try {
       console.log("Inside worker/video.ts");
       console.log("job.data is ", job.data);
@@ -64,12 +67,19 @@ export const videoWorker = new Worker(
         `Found ${blogs.length} transcripts to summarize for video ${videoId}`
       );
 
+      const totalBlogTitleAndSummaryJobs = Math.ceil(blogs.length / batchSize);
+
+      redis.incrby(
+        blogTitleAndSummaryTotalJobsRedisKey,
+        totalBlogTitleAndSummaryJobs
+      );
+
       for (let i = 0; i < blogs.length; i += batchSize) {
         const batch = blogs.slice(i, i + batchSize);
         console.log(
-          `Adding batch ${i / batchSize + 1} of ${Math.ceil(
-            blogs.length / batchSize
-          )} to blog title and summary`
+          `Adding batch ${
+            i / batchSize + 1
+          } of ${totalBlogTitleAndSummaryJobs} to blog title and summary`
         );
 
         blogTitleAndSummaryQueue.add(

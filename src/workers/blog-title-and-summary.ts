@@ -50,11 +50,6 @@ export const blogTitleAndSummaryWorker = new Worker(
         }
       }
 
-      await prisma.video.update({
-        where: { id: videoId },
-        data: { processingState: "COMPLETED" },
-      });
-
       return {
         success: true,
         message: `Processed ${blogs.length} transcripts for video ${videoId}`,
@@ -64,8 +59,6 @@ export const blogTitleAndSummaryWorker = new Worker(
         console.log("error.stack is ", error.stack);
         console.log("error.message is ", error.message);
       }
-
-      console.log("Error occurred while processing batch summary.");
 
       // Update video processing state to failed
       await prisma.video.update({
