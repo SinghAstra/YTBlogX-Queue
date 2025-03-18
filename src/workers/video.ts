@@ -1,25 +1,107 @@
 import { Worker } from "bullmq";
-import { QUEUES } from "../lib/constants.js";
+import { YoutubeTranscript } from "youtube-transcript";
+import {
+  BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY,
+  QUEUES,
+} from "../lib/constants.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import redis from "../lib/redis.js";
+import { splitTranscript } from "../lib/split-transcript.js";
+import { blogTitleAndSummaryQueue } from "../queue/index.js";
+
+const batchSize = BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY;
 
 export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
-    const { videoId, videoURL } = job.data;
-
+    const { videoId } = job.data;
     try {
       console.log("Inside worker/video.ts");
       console.log("job.data is ", job.data);
-      return { status: "SUCCESS", message: "Started Processing Video" };
+
+      const video = await prisma.video.findFirst({
+        where: { id: videoId },
+      });
+
+      if (!video) {
+        throw new Error("Video Not Found.");
+      }
+
+      const transcriptData = await YoutubeTranscript.fetchTranscript(
+        video.youtubeId
+      );
+      const transcript = transcriptData.map((entry) => entry.text).join(" ");
+      const transcriptChunks = splitTranscript(transcript);
+
+      console.log("transcriptChunks.length is ", transcriptChunks.length);
+
+      const createBlogWithTranscript = transcriptChunks.map((chunk, index) => {
+        return prisma.blog.create({
+          data: {
+            transcript: chunk,
+            videoId: video.id,
+            part: index + 1,
+          },
+        });
+      });
+
+      await prisma.$transaction(createBlogWithTranscript);
+
+      // Get all blogs for the video that don't have summaries yet
+      const blogs = await prisma.blog.findMany({
+        where: {
+          videoId,
+          summary: null,
+        },
+        select: {
+          id: true,
+          transcript: true,
+        },
+      });
+
+      console.log(
+        `Found ${blogs.length} transcripts to summarize for video ${videoId}`
+      );
+
+      for (let i = 0; i < blogs.length; i += batchSize) {
+        const batch = blogs.slice(i, i + batchSize);
+        console.log(
+          `Adding batch ${i / batchSize + 1} of ${Math.ceil(
+            blogs.length / batchSize
+          )} to blog title and summary`
+        );
+
+        blogTitleAndSummaryQueue.add(
+          QUEUES.BLOG_TITLE_AND_SUMMARY,
+          { videoId: video.id, blogs: batch },
+          {
+            attempts: 3,
+            backoff: {
+              type: "exponential",
+              delay: 5000,
+            },
+          }
+        );
+      }
+
+      return { success: true, message: "Started Processing Video" };
     } catch (error) {
       console.log("Error in Video Worker");
       if (error instanceof Error) {
-        logger.error(`Repository worker error: ${error.message}`);
-        logger.error(`Stack: ${error.stack}`);
+        console.log("error.stack is ", error.stack);
+        console.log("error.message is ", error.message);
       }
-      throw error;
+
+      await prisma.video.update({
+        where: { id: videoId },
+        data: { processingState: "FAILED" },
+      });
+
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
   {
@@ -29,7 +111,9 @@ export const videoWorker = new Worker(
 );
 
 videoWorker.on("failed", (job, error) => {
-  logger.error(`Job ${job?.id} in worker failed with error: ${error.message}`);
+  logger.error(
+    `Job ${job?.id} in video worker failed with error: ${error.message}`
+  );
 });
 
 videoWorker.on("completed", (job) => {

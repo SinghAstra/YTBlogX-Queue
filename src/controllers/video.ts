@@ -4,7 +4,7 @@ import { videoQueue } from "../queue";
 
 export const videoQueueController = async (req: Request, res: Response) => {
   try {
-    const { videoId, userId, videoURL } = req.body.auth;
+    const { videoId, userId } = req.body.auth;
     console.log("req.body.auth --videoQueueController is ", req.body.auth);
 
     await videoQueue.add(
@@ -12,7 +12,6 @@ export const videoQueueController = async (req: Request, res: Response) => {
       {
         videoId,
         userId,
-        videoURL,
       },
       {
         attempts: 3,
