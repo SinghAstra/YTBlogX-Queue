@@ -1,17 +1,104 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "./prisma";
+import redis from "./redis";
+import {
+  getGeminiRequestsThisMinuteRedisKey,
+  getGeminiTokensConsumedThisMinuteRedisKey,
+} from "./redis-keys";
 
-const geminiKey = process.env.GEMINI_API_KEY;
-if (!geminiKey) {
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
   throw new Error("GEMINI_API_KEY is required.");
 }
 
-const genAI = new GoogleGenerativeAI(geminiKey);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-// Token consumption tracking
-let tokenConsumed = 0;
+const REQUEST_LIMIT = 15;
 const TOKEN_LIMIT = 800000;
+
+export async function trackRequest(tokenCount: number) {
+  const geminiRequestsCountKey = getGeminiRequestsThisMinuteRedisKey();
+  const geminiRequestsTokenConsumedKey =
+    getGeminiTokensConsumedThisMinuteRedisKey();
+
+  const result = await redis
+    .multi()
+    .incr(geminiRequestsCountKey)
+    .incrby(geminiRequestsTokenConsumedKey, tokenCount)
+    .expire(geminiRequestsCountKey, 60)
+    .expire(geminiRequestsTokenConsumedKey, 60)
+    .exec();
+
+  if (!result) {
+    throw new Error(
+      "Redis connection failed during updating tokens consumed and request count"
+    );
+  }
+
+  const [requests, tokens] = result.map(([error, response]) => {
+    if (error) throw error;
+    return response;
+  });
+
+  return { requests, tokens };
+}
+
+export async function checkLimits() {
+  const geminiRequestsCountKey = getGeminiRequestsThisMinuteRedisKey();
+  const geminiRequestsTokenConsumedKey =
+    getGeminiTokensConsumedThisMinuteRedisKey();
+
+  const [requests, tokens] = await redis.mget(
+    geminiRequestsCountKey,
+    geminiRequestsTokenConsumedKey
+  );
+
+  return {
+    requests: parseInt(requests ?? "0"),
+    tokens: parseInt(tokens ?? "0"),
+    requestsExceeded: parseInt(requests ?? "0") >= REQUEST_LIMIT,
+    tokensExceeded: parseInt(tokens ?? "0") >= TOKEN_LIMIT,
+  };
+}
+
+async function sleepForOneMinute() {
+  console.log(`Rate limit exceeded. Waiting for 1000ms...`);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
+
+export async function estimateTokenCount(
+  prompt: string,
+  maxOutputTokens = 1000
+) {
+  return Math.ceil(prompt.length / 4) + maxOutputTokens;
+}
+
+export async function handleRateLimit(tokenCount: number) {
+  const limitsResponse = await checkLimits();
+
+  console.log("--------------------------------------");
+  console.log("limitsResponse:", limitsResponse);
+  console.log("--------------------------------------");
+
+  const { requestsExceeded, tokensExceeded } = limitsResponse;
+
+  if (requestsExceeded || tokensExceeded) {
+    await sleepForOneMinute();
+  }
+
+  await trackRequest(tokenCount);
+}
+
+async function handleRequestExceeded() {
+  console.log("-------------------------------");
+  console.log("In handleRequest exceeded");
+  const geminiRequestsCountKey = getGeminiRequestsThisMinuteRedisKey();
+  await redis.set(geminiRequestsCountKey, 16);
+  const limitsResponse = await checkLimits();
+  console.log("limitsResponse:", limitsResponse);
+  console.log("-------------------------------");
+}
 
 // Sleep function for rate limiting
 const sleep = () => new Promise((resolve) => setTimeout(resolve, 1000));
@@ -21,24 +108,6 @@ export async function generateTitleAndSummaries(
 ) {
   for (let i = 0; i < 5; i++) {
     try {
-      // Check token consumption and wait if necessary
-      if (tokenConsumed >= TOKEN_LIMIT) {
-        console.log(
-          `Token limit reached (${tokenConsumed}). Cooling down for 1000ms`
-        );
-        await sleep();
-        tokenConsumed = 0;
-      }
-
-      // Estimate token consumption for this batch (rough estimate)
-      // Assuming approximately 1 token per 4 characters
-      const estimatedTokens = transcriptBatch.reduce(
-        (total, blog) => total + Math.ceil(blog.transcript.length / 4),
-        0
-      );
-      tokenConsumed += estimatedTokens;
-      console.log("tokenConsumed: ", tokenConsumed);
-
       const prompt = `
       You are a concise summarizer and title generator. 
       I will provide you with an array of transcript from a YouTube video. 
@@ -61,18 +130,18 @@ export async function generateTitleAndSummaries(
       ${JSON.stringify(transcriptBatch)}
     `;
 
+      const tokenCount = await estimateTokenCount(prompt);
+
+      await handleRateLimit(tokenCount);
+
       const result = await model.generateContent(prompt);
       let responseText = result.response.text();
-      console.log("Raw responseText:", responseText); // Log raw response for debugging
 
       // Remove potential Markdown or extra text
       responseText = responseText
         .replace(/```json/g, "") // Remove ```json
         .replace(/```/g, "") // Remove ```
         .trim(); // Remove leading/trailing whitespace
-
-      console.log("Cleaned responseText:", responseText); // Log cleaned response
-      console.log("typeof responseText is ", typeof responseText);
 
       const titlesAndSummaries = JSON.parse(responseText);
 
@@ -101,7 +170,7 @@ export async function generateTitleAndSummaries(
         console.log("--------------------------------");
         console.log(`Non Syntax Error occurred.Aborting --generateSummaries`);
         console.log("--------------------------------");
-        return [];
+        throw error;
       }
     }
   }
@@ -144,22 +213,6 @@ export async function generateVideoOverview(videoId: string) {
       ${summariesText}
     `;
 
-    // Check token consumption and wait if necessary
-    if (tokenConsumed >= TOKEN_LIMIT) {
-      console.log(
-        `Token limit reached (${tokenConsumed}). Cooling down for 1000ms`
-      );
-      await sleep();
-      tokenConsumed = 0;
-    }
-
-    // Estimate token consumption for this batch (rough estimate)
-    // Assuming approximately 1 token per 4 characters
-    const estimatedTokens = prompt.length / 4;
-    tokenConsumed += estimatedTokens;
-
-    console.log("tokenConsumed: ", tokenConsumed);
-
     // Generate the overview using Gemini API
     const result = await model.generateContent(prompt);
     const overview = result.response.text().trim();
@@ -199,21 +252,6 @@ export async function generateBlogContent(
       Return only the markdown content with no additional text or explanations.
     `;
 
-    // Check token consumption and wait if necessary
-    if (tokenConsumed >= TOKEN_LIMIT) {
-      console.log(
-        `Token limit reached (${tokenConsumed}). Cooling down for 1000ms`
-      );
-      await sleep();
-      tokenConsumed = 0;
-    }
-
-    // Estimate token consumption for this batch (rough estimate)
-    // Assuming approximately 1 token per 4 characters
-    const estimatedTokens = prompt.length / 4;
-    tokenConsumed += estimatedTokens;
-
-    console.log("tokenConsumed: ", tokenConsumed);
     const result = await model.generateContent(prompt);
     const blogContent = result.response.text().trim();
     console.log(`Generated blog content :`, blogContent);

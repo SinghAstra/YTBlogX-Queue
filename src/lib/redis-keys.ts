@@ -13,3 +13,15 @@ export function getBlogContentCompletedJobsRedisKey(videoId: string) {
 export function getBlogContentTotalJobsRedisKey(videoId: string) {
   return `${videoId}:blogContentTotalJobs`;
 }
+
+export function getGeminiRequestsThisMinuteRedisKey() {
+  const now = Date.now();
+  const currentMinute = Math.floor(now / 60000);
+  return `${currentMinute}:rateLimitGeminiRequests`;
+}
+
+export function getGeminiTokensConsumedThisMinuteRedisKey() {
+  const now = Date.now();
+  const currentMinute = Math.floor(now / 60000);
+  return `${currentMinute}:rateLimitGeminiTokensConsumed`;
+}
