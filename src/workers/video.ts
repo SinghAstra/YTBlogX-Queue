@@ -1,3 +1,4 @@
+import { VideoProcessingState } from "@prisma/client";
 import { Worker } from "bullmq";
 import { YoutubeTranscript } from "youtube-transcript";
 import {
@@ -6,6 +7,7 @@ import {
 } from "../lib/constants.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogTitleAndSummaryCompletedJobsRedisKey,
   getBlogTitleAndSummaryTotalJobsRedisKey,
@@ -20,14 +22,18 @@ export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
     const { videoId } = job.data;
+    console.log("Starting video processing...");
+
+    await sendProcessingUpdate(videoId, {
+      status: VideoProcessingState.PROCESSING,
+      message: "We're preparing the transcript. Hang tight! 🎥",
+    });
+
     const blogTitleAndSummaryTotalJobsRedisKey =
       getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
     const blogTitleAndSummaryCompletedJobsRedisKey =
       getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
     try {
-      console.log("Inside worker/video.ts");
-      console.log("job.data is ", job.data);
-
       const video = await prisma.video.findFirst({
         where: { id: videoId },
       });
@@ -44,6 +50,11 @@ export const videoWorker = new Worker(
 
       console.log("transcriptChunks.length is ", transcriptChunks.length);
 
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.PROCESSING,
+        message: `We’ve split the transcript into ${transcriptChunks.length} parts. Moving on! 🚀`,
+      });
+
       const createBlogWithTranscript = transcriptChunks.map((chunk, index) => {
         return prisma.blog.create({
           data: {
@@ -55,6 +66,11 @@ export const videoWorker = new Worker(
       });
 
       await prisma.$transaction(createBlogWithTranscript);
+
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.PROCESSING,
+        message: "Generating blog summaries... Almost there! ✍️",
+      });
 
       // Get all blogs for the video that don't have summaries yet
       const blogs = await prisma.blog.findMany({
@@ -100,8 +116,6 @@ export const videoWorker = new Worker(
           }
         );
       }
-
-      return { success: true, message: "Started Processing Video" };
     } catch (error) {
       console.log("Error in Video Worker");
       if (error instanceof Error) {
@@ -114,10 +128,10 @@ export const videoWorker = new Worker(
         data: { processingState: "FAILED" },
       });
 
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : "Unknown error",
-      };
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.FAILED,
+        message: "Oops! Something went wrong. Please try again later. ⚠️",
+      });
     }
   },
   {

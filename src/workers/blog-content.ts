@@ -1,8 +1,10 @@
+import { VideoProcessingState } from "@prisma/client";
 import { Worker } from "bullmq";
 import { QUEUES } from "../lib/constants.js";
 import { generateBlogContent } from "../lib/gemini.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogContentCompletedJobsRedisKey,
   getBlogContentTotalJobsRedisKey,
@@ -34,6 +36,16 @@ async function checkAllJobsCompleted(videoId: string) {
       where: { id: videoId },
       data: { processingState: "COMPLETED" },
     });
+
+    await sendProcessingUpdate(videoId, {
+      status: VideoProcessingState.COMPLETED,
+      message: "Blog content is ready to read! 🚀",
+    });
+
+    await sendProcessingUpdate(videoId, {
+      status: VideoProcessingState.COMPLETED,
+      message: "Give me a second I will be redirecting you ...! ",
+    });
   }
 }
 
@@ -45,6 +57,10 @@ export const blogContentWorker = new Worker(
     const blogContentCompletedJobsRedisKey =
       getBlogContentCompletedJobsRedisKey(videoId);
     try {
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.PROCESSING,
+        message: "Crafting detailed blog content. This may take a moment... ⏳",
+      });
       const video = await prisma.video.findUnique({ where: { id: videoId } });
       const allBlogs = await prisma.blog.findMany({
         where: { videoId },
@@ -81,6 +97,11 @@ export const blogContentWorker = new Worker(
         console.log("error.stack is ", error.stack);
         console.log("error.message is ", error.message);
       }
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.FAILED,
+        message:
+          "Something went wrong while creating the content. Please try again. 😔",
+      });
 
       await prisma.video.update({
         where: { id: videoId },

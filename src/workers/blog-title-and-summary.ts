@@ -1,4 +1,4 @@
-import { Blog } from "@prisma/client";
+import { Blog, VideoProcessingState } from "@prisma/client";
 import { Worker } from "bullmq";
 import { QUEUES } from "../lib/constants.js";
 import {
@@ -7,6 +7,7 @@ import {
 } from "../lib/gemini.js";
 import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogContentCompletedJobsRedisKey,
   getBlogContentTotalJobsRedisKey,
@@ -61,6 +62,11 @@ async function checkAllJobsCompleted(videoId: string) {
     );
     logger.info("-------------------------------------------------------");
 
+    await sendProcessingUpdate(videoId, {
+      status: VideoProcessingState.PROCESSING,
+      message: "Blog summaries are ready! 🎉",
+    });
+
     // Generate video overview
     const overview = await generateVideoOverview(videoId);
 
@@ -102,6 +108,12 @@ export const blogTitleAndSummaryWorker = new Worker(
       getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
 
     try {
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.PROCESSING,
+        message:
+          "Summarizing the transcript into clear and concise blogs... ✍️",
+      });
+
       const blogs: Blog[] = job.data.blogs;
 
       // Generate summaries
@@ -133,6 +145,11 @@ export const blogTitleAndSummaryWorker = new Worker(
         console.log("error.stack is ", error.stack);
         console.log("error.message is ", error.message);
       }
+
+      await sendProcessingUpdate(videoId, {
+        status: VideoProcessingState.FAILED,
+        message: "Hmm... we hit a snag while summarizing. Please try again. 🔥",
+      });
 
       // Update video processing state to failed
       await prisma.video.update({
