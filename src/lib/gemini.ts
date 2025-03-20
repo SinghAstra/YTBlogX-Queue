@@ -100,9 +100,6 @@ async function handleRequestExceeded() {
   console.log("-------------------------------");
 }
 
-// Sleep function for rate limiting
-const sleep = () => new Promise((resolve) => setTimeout(resolve, 1000));
-
 export async function generateTitleAndSummaries(
   transcriptBatch: { id: string; transcript: string }[]
 ) {
@@ -110,15 +107,15 @@ export async function generateTitleAndSummaries(
     try {
       const prompt = `
       You are a concise summarizer and title generator. 
-      I will provide you with an array of transcript from a YouTube video. 
+      I will provide you with an array of object with each having two property 'id' and  'transcript' from a YouTube video. 
       
-      For each segment:
+      For each object:
       - Generate a short, engaging title (max 10 words).
       - Provide a 2-4 line summary capturing the key points.
       
       Return your response as a JSON array of objects, ensuring:
       - Each object contains 'id', 'title', and 'summary' properties.
-      - All keys and values are strings — the entire JSON must be valid for direct parsing with JSON.parse().
+      - All keys and values must be strings — the entire JSON must be valid for direct parsing with JSON.parse().
 
       Format your entire response as valid JSON with no additional text before or after.
 
@@ -135,75 +132,91 @@ export async function generateTitleAndSummaries(
       await handleRateLimit(tokenCount);
 
       const result = await model.generateContent(prompt);
-      let responseText = result.response.text();
+      let rawResponse = result.response.text();
 
       // Remove potential Markdown or extra text
-      responseText = responseText
+      rawResponse = rawResponse
         .replace(/```json/g, "") // Remove ```json
         .replace(/```/g, "") // Remove ```
         .trim(); // Remove leading/trailing whitespace
 
-      const titlesAndSummaries = JSON.parse(responseText);
+      const parsedResponse = JSON.parse(rawResponse);
+      console.log("parsedResponse is ", parsedResponse);
 
-      // Validate that we got an array of objects with id and summary
-      if (!Array.isArray(titlesAndSummaries)) {
-        throw new Error("Response is not an array");
+      if (
+        !isValidBatchTitleAndSummaryResponse(parsedResponse, transcriptBatch)
+      ) {
+        throw new Error("Invalid batch title and summary response format");
       }
 
-      console.log("titlesAndSummaries is ", titlesAndSummaries);
-
-      return titlesAndSummaries;
+      return parsedResponse;
     } catch (error) {
       if (error instanceof Error) {
         console.log("error.stack is ", error.stack);
         console.log("error.message is ", error.message);
       }
+
       if (
         error instanceof Error &&
-        error.message.includes("Expected double-quoted property name in JSON")
+        error.message.includes("429 Too Many Requests")
+      ) {
+        await handleRequestExceeded();
+        sleepForOneMinute();
+        continue;
+      }
+
+      if (
+        error instanceof Error &&
+        (error.message.includes(
+          "Invalid batch title and summary response format"
+        ) ||
+          error.stack?.includes("SyntaxError"))
       ) {
         console.log("--------------------------------");
         console.log(`Syntax Error occurred. Trying again for ${i} time`);
         console.log("--------------------------------");
         continue;
       } else {
-        console.log("--------------------------------");
-        console.log(`Non Syntax Error occurred.Aborting --generateSummaries`);
-        console.log("--------------------------------");
-        throw error;
+        throw new Error(
+          "Could Not generate batch title and summaries, maybe ai model is down."
+        );
       }
     }
   }
+  throw new Error(
+    "Could Not generate batch title and summaries, maybe ai model is down."
+  );
 }
 
 // Function to generate a video overview based on summaries
 export async function generateVideoOverview(videoId: string) {
-  try {
-    // Fetch all blog summaries for the given videoId
-    const blogs = await prisma.blog.findMany({
-      where: {
-        videoId,
-        summary: { not: null }, // Ensure we only get blogs with summaries
-      },
-      select: {
-        id: true,
-        summary: true,
-      },
-    });
+  for (let i = 0; i < 5; i++) {
+    try {
+      // Fetch all blog summaries for the given videoId
+      const blogs = await prisma.blog.findMany({
+        where: {
+          videoId,
+          summary: { not: null }, // Ensure we only get blogs with summaries
+        },
+        select: {
+          id: true,
+          summary: true,
+        },
+      });
 
-    if (blogs.length === 0) {
-      throw new Error(`No summaries found for videoId: ${videoId}`);
-    }
+      if (blogs.length === 0) {
+        throw new Error(`No summaries found for videoId: ${videoId}`);
+      }
 
-    console.log(`Found ${blogs.length} summaries for videoId: ${videoId}`);
+      console.log(`Found ${blogs.length} summaries for videoId: ${videoId}`);
 
-    // Prepare the summaries as a single string for the prompt
-    const summariesText = blogs
-      .map((blog) => `Summary (ID: ${blog.id}): ${blog.summary}`)
-      .join("\n\n");
+      // Prepare the summaries as a single string for the prompt
+      const summariesText = blogs
+        .map((blog) => `Summary (ID: ${blog.id}): ${blog.summary}`)
+        .join("\n\n");
 
-    // Construct the prompt for Gemini
-    const prompt = `
+      // Construct the prompt for Gemini
+      const prompt = `
       You are an expert summarizer. Below is a collection of summaries from different parts of a video.
       Your task is to generate a concise, cohesive overview of the entire video in 4-6 sentences.
       Focus on capturing the main themes, key points, and overall purpose of the video based on these summaries.
@@ -213,19 +226,34 @@ export async function generateVideoOverview(videoId: string) {
       ${summariesText}
     `;
 
-    // Generate the overview using Gemini API
-    const result = await model.generateContent(prompt);
-    const overview = result.response.text().trim();
+      const tokenCount = await estimateTokenCount(prompt);
 
-    console.log(`Generated overview for videoId: ${videoId}:`, overview);
+      await handleRateLimit(tokenCount);
 
-    return overview;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error("error.stack is ", error.stack);
-      console.error("error.message is ", error.message);
+      // Generate the overview using Gemini API
+      const result = await model.generateContent(prompt);
+      const overview = result.response.text().trim();
+
+      console.log(`Generated overview for videoId: ${videoId}:`, overview);
+
+      return overview;
+    } catch (error) {
+      if (error instanceof Error) {
+        console.log("error.stack is ", error.stack);
+        console.log("error.message is ", error.message);
+      }
+
+      if (
+        error instanceof Error &&
+        error.message.includes("429 Too Many Requests")
+      ) {
+        await handleRequestExceeded();
+        sleepForOneMinute();
+        continue;
+      }
+
+      throw error;
     }
-    throw error;
   }
 }
 
@@ -234,8 +262,9 @@ export async function generateBlogContent(
   allSummaries: string,
   transcript: string
 ) {
-  try {
-    const prompt = `
+  for (let i = 0; i < 5; i++) {
+    try {
+      const prompt = `
       You are a professional blog writer. Using the provided video overview, 
       a collection of all blog summaries for context, and the specific transcript,
       generate a well-structured, context-aware blog post content in markdown format.
@@ -252,15 +281,54 @@ export async function generateBlogContent(
       Return only the markdown content with no additional text or explanations.
     `;
 
-    const result = await model.generateContent(prompt);
-    const blogContent = result.response.text().trim();
-    console.log(`Generated blog content :`, blogContent);
-    return blogContent;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.log("error.stack is ", error.stack);
-      console.log("error.message is ", error.message);
+      const tokenCount = await estimateTokenCount(prompt);
+
+      await handleRateLimit(tokenCount);
+
+      const result = await model.generateContent(prompt);
+      const blogContent = result.response.text().trim();
+
+      return blogContent;
+    } catch (error) {
+      if (error instanceof Error) {
+        console.log("error.stack is ", error.stack);
+        console.log("error.message is ", error.message);
+      }
+
+      if (
+        error instanceof Error &&
+        error.message.includes("429 Too Many Requests")
+      ) {
+        await handleRequestExceeded();
+        sleepForOneMinute();
+        continue;
+      }
+      throw error;
     }
-    throw error;
   }
+}
+
+function isValidBatchTitleAndSummaryResponse(
+  data: any,
+  transcriptBatch: { id: string; transcript: string }[]
+) {
+  if (!Array.isArray(data) || transcriptBatch.length !== data.length) {
+    return false;
+  }
+
+  // Validate each item in the array
+  for (const item of data) {
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      typeof item.id !== "string" ||
+      typeof item.title !== "string" ||
+      typeof item.summary !== "string" ||
+      Object.keys(item).length !== 3
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
