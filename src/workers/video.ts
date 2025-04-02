@@ -5,14 +5,13 @@ import {
   BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY,
   QUEUES,
 } from "../lib/constants.js";
-import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogTitleAndSummaryCompletedJobsRedisKey,
   getBlogTitleAndSummaryTotalJobsRedisKey,
 } from "../lib/redis-keys.js";
-import redis from "../lib/redis.js";
+import redisClient from "../lib/redis.js";
 import { splitTranscript } from "../lib/split-transcript.js";
 import { blogTitleAndSummaryQueue } from "../queue/index.js";
 
@@ -22,7 +21,6 @@ export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
     const { videoId } = job.data;
-    console.log("Starting video processing...");
 
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.PROCESSING,
@@ -47,8 +45,6 @@ export const videoWorker = new Worker(
       );
       const transcript = transcriptData.map((entry) => entry.text).join(" ");
       const transcriptChunks = splitTranscript(transcript);
-
-      console.log("transcriptChunks.length is ", transcriptChunks.length);
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
@@ -84,25 +80,16 @@ export const videoWorker = new Worker(
         },
       });
 
-      console.log(
-        `Found ${blogs.length} transcripts to summarize for video ${videoId}`
-      );
-
       const totalBlogTitleAndSummaryJobs = Math.ceil(blogs.length / batchSize);
 
-      redis.incrby(
+      redisClient.incrby(
         blogTitleAndSummaryTotalJobsRedisKey,
         totalBlogTitleAndSummaryJobs
       );
-      redis.set(blogTitleAndSummaryCompletedJobsRedisKey, 0);
+      redisClient.set(blogTitleAndSummaryCompletedJobsRedisKey, 0);
 
       for (let i = 0; i < blogs.length; i += batchSize) {
         const batch = blogs.slice(i, i + batchSize);
-        console.log(
-          `Adding batch ${
-            i / batchSize + 1
-          } of ${totalBlogTitleAndSummaryJobs} to blog title and summary`
-        );
 
         await blogTitleAndSummaryQueue.add(
           QUEUES.BLOG_TITLE_AND_SUMMARY,
@@ -117,7 +104,6 @@ export const videoWorker = new Worker(
         );
       }
     } catch (error) {
-      console.log("Error in Video Worker");
       if (error instanceof Error) {
         console.log("error.stack is ", error.stack);
         console.log("error.message is ", error.message);
@@ -130,26 +116,26 @@ export const videoWorker = new Worker(
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.FAILED,
-        message: "Oops! Something went wrong. Please try again later. ⚠️",
+        message: "⚠️ Oops! Something went wrong. Please try again later. ",
       });
     }
   },
   {
-    connection: redis,
+    connection: redisClient,
     concurrency: 5,
   }
 );
 
 videoWorker.on("failed", (job, error) => {
-  logger.error(
-    `Job ${job?.id} in video worker failed with error: ${error.message}`
-  );
+  if (error instanceof Error) {
+    console.log("error.stack is ", error.stack);
+    console.log("error.message is ", error.message);
+  }
+  console.log("Video worker failed!");
 });
 
-videoWorker.on("completed", (job) => {
-  logger.success(
-    `Job ${job.id} in video worker completed successfully --Updated`
-  );
+videoWorker.on("completed", () => {
+  console.log("Video Worker Completed Successfully.");
 });
 
 // Gracefully shutdown Prisma when worker exits

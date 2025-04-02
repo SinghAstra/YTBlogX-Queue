@@ -5,7 +5,6 @@ import {
   generateTitleAndSummaries,
   generateVideoOverview,
 } from "../lib/gemini.js";
-import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
@@ -14,7 +13,7 @@ import {
   getBlogTitleAndSummaryCompletedJobsRedisKey,
   getBlogTitleAndSummaryTotalJobsRedisKey,
 } from "../lib/redis-keys.js";
-import redis from "../lib/redis.js";
+import redisClient from "../lib/redis.js";
 import { blogContentQueue } from "../queue/index.js";
 
 // Function to update summaries in the database
@@ -41,10 +40,10 @@ async function checkAllJobsCompleted(videoId: string) {
     getBlogContentCompletedJobsRedisKey(videoId);
   const blogContentTotalJobsRedisKey = getBlogContentTotalJobsRedisKey(videoId);
 
-  const blogTitleAndSummaryTotalJobs = await redis.get(
+  const blogTitleAndSummaryTotalJobs = await redisClient.get(
     blogTitleAndSummaryTotalJobsRedisKey
   );
-  const blogTitleAndSummaryCompletedJobs = await redis.get(
+  const blogTitleAndSummaryCompletedJobs = await redisClient.get(
     blogTitleAndSummaryCompletedJobsRedisKey
   );
 
@@ -56,11 +55,11 @@ async function checkAllJobsCompleted(videoId: string) {
   );
   console.log("-------------------------------------------------------");
   if (blogTitleAndSummaryTotalJobs === blogTitleAndSummaryCompletedJobs) {
-    logger.info("-------------------------------------------------------");
-    logger.info(
+    console.log("-------------------------------------------------------");
+    console.log(
       "Inside the if of blogTitleAndSummaryTotalJobs === blogTitleAndSummaryCompletedJobs"
     );
-    logger.info("-------------------------------------------------------");
+    console.log("-------------------------------------------------------");
 
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.PROCESSING,
@@ -81,8 +80,8 @@ async function checkAllJobsCompleted(videoId: string) {
       },
     });
 
-    redis.set(blogContentCompletedJobsRedisKey, 0);
-    redis.set(blogContentTotalJobsRedisKey, blogs.length);
+    redisClient.set(blogContentCompletedJobsRedisKey, 0);
+    redisClient.set(blogContentTotalJobsRedisKey, blogs.length);
 
     blogs.map(async (blog) => {
       await blogContentQueue.add(
@@ -139,7 +138,7 @@ export const blogTitleAndSummaryWorker = new Worker(
         }
       }
 
-      await redis.incr(blogTitleAndSummaryCompletedJobsRedisKey);
+      await redisClient.incr(blogTitleAndSummaryCompletedJobsRedisKey);
     } catch (error) {
       if (error instanceof Error) {
         console.log("error.stack is ", error.stack);
@@ -161,21 +160,21 @@ export const blogTitleAndSummaryWorker = new Worker(
     }
   },
   {
-    connection: redis,
+    connection: redisClient,
     concurrency: 5,
   }
 );
 
 blogTitleAndSummaryWorker.on("failed", (job, error) => {
-  logger.error(
-    `Job ${job?.id} in blog title and summary worker failed with error: ${error.message}`
-  );
+  if (error instanceof Error) {
+    console.log("error.stack is ", error.stack);
+    console.log("error.message is ", error.message);
+  }
+  console.log("Blog Title And Summary Worker failed!");
 });
 
-blogTitleAndSummaryWorker.on("completed", (job) => {
-  logger.success(
-    `Job ${job.id} in blog title and summary worker completed successfully`
-  );
+blogTitleAndSummaryWorker.on("completed", () => {
+  console.log("Blog Title And Summary Worker Completed Successfully.");
 });
 
 // Gracefully shutdown Prisma when worker exits

@@ -106,26 +106,30 @@ export async function generateTitleAndSummaries(
   for (let i = 0; i < 5; i++) {
     try {
       const prompt = `
-      You are a concise summarizer and title generator. 
-      I will provide you with an array of object with each having two property 'id' and  'transcript' from a YouTube video. 
+      You are a concise summarizer and title generator for YouTube video transcripts. 
+      I will provide you with an array of objects, each containing an 'id' and a 'transcript' from a YouTube video.
       
-      For each object:
-      - Generate a short, engaging title (max 10 words).
-      - Provide a 2-4 line summary capturing the key points.
+      For each object in the array, generate:
+      - A short, engaging title (maximum 10 words).
+      - A concise summary (20-40 words) capturing the key points of the transcript.
       
-      Return your response as a JSON array of objects, ensuring:
-      - Each object contains 'id', 'title', and 'summary' properties.
-      - All keys and values must be strings — the entire JSON must be valid for direct parsing with JSON.parse().
-
-      Format your entire response as valid JSON with no additional text before or after.
-
-      Example:
-      [{"id":"123","title":"Introduction to AI","summary":"This section explains what AI is and its importance."},
-       {"id":"456","title":"Key Challenges in AI","summary":"It discusses the main challenges AI researchers face."}]
+      Return your response as a JSON array of objects, where each object contains the following properties:
+      - 'id': The original ID from the input object.
+      - 'title': The generated title as a string.
+      - 'summary': The generated summary as a string.
       
-      Here are the transcript :
+      Ensure that all keys and values are strings and that the entire JSON is valid for direct parsing with JSON.parse(). 
+      Do not include any additional text, explanations, or comments outside the JSON array. The response should consist solely of the JSON array.
+      
+      For example, if the input is:
+      [{"id":"123","transcript":"This is an introduction to AI..."},{"id":"456","transcript":"Here we discuss the challenges in AI..."}]
+      
+      Your response should be:
+      [{"id":"123","title":"Introduction to Artificial Intelligence","summary":"This section provides an overview of AI, its definition, and significance in modern technology."},{"id":"456","title":"Challenges in AI Development","summary":"It explores the primary obstacles faced by AI researchers, including data quality and ethical concerns."}]
+      
+      Here is the array of transcript objects:
       ${JSON.stringify(transcriptBatch)}
-    `;
+      `;
 
       const tokenCount = await estimateTokenCount(prompt);
 
@@ -172,9 +176,11 @@ export async function generateTitleAndSummaries(
         ) ||
           error.stack?.includes("SyntaxError"))
       ) {
+        i = i - 1;
         console.log("--------------------------------");
         console.log(`Syntax Error occurred. Trying again for ${i} time`);
         console.log("--------------------------------");
+
         continue;
       } else {
         throw new Error(
@@ -321,6 +327,8 @@ function isValidBatchTitleAndSummaryResponse(
     if (
       typeof item !== "object" ||
       item === null ||
+      !item.title.trim() ||
+      !item.summary.trim() ||
       typeof item.id !== "string" ||
       typeof item.title !== "string" ||
       typeof item.summary !== "string" ||

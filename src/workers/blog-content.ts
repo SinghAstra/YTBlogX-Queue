@@ -2,22 +2,23 @@ import { VideoProcessingState } from "@prisma/client";
 import { Worker } from "bullmq";
 import { QUEUES } from "../lib/constants.js";
 import { generateBlogContent } from "../lib/gemini.js";
-import logger from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogContentCompletedJobsRedisKey,
   getBlogContentTotalJobsRedisKey,
 } from "../lib/redis-keys.js";
-import redis from "../lib/redis.js";
+import redisClient from "../lib/redis.js";
 
 async function checkAllJobsCompleted(videoId: string) {
   const blogContentCompletedJobsRedisKey =
     getBlogContentCompletedJobsRedisKey(videoId);
   const blogContentTotalJobsRedisKey = getBlogContentTotalJobsRedisKey(videoId);
 
-  const blogContentTotalJobs = await redis.get(blogContentTotalJobsRedisKey);
-  const blogContentCompletedJobs = await redis.get(
+  const blogContentTotalJobs = await redisClient.get(
+    blogContentTotalJobsRedisKey
+  );
+  const blogContentCompletedJobs = await redisClient.get(
     blogContentCompletedJobsRedisKey
   );
 
@@ -26,11 +27,11 @@ async function checkAllJobsCompleted(videoId: string) {
   console.log("blogContentCompletedJobs is ", blogContentCompletedJobs);
   console.log("-------------------------------------------------------");
   if (blogContentTotalJobs === blogContentCompletedJobs) {
-    logger.info("-------------------------------------------------------");
-    logger.info(
+    console.log("-------------------------------------------------------");
+    console.log(
       "Inside the if of blogContentTotalJobs === blogContentCompletedJobs"
     );
-    logger.info("-------------------------------------------------------");
+    console.log("-------------------------------------------------------");
 
     await prisma.video.update({
       where: { id: videoId },
@@ -90,7 +91,7 @@ export const blogContentWorker = new Worker(
         },
       });
 
-      await redis.incr(blogContentCompletedJobsRedisKey);
+      await redisClient.incr(blogContentCompletedJobsRedisKey);
     } catch (error) {
       console.log("Error in Blog Content Worker");
       if (error instanceof Error) {
@@ -112,21 +113,22 @@ export const blogContentWorker = new Worker(
     }
   },
   {
-    connection: redis,
+    connection: redisClient,
     concurrency: 5,
   }
 );
 
 blogContentWorker.on("failed", (job, error) => {
-  logger.error(
-    `Job ${job?.id} in blog content worker failed with error: ${error.message}`
-  );
+  if (error instanceof Error) {
+    console.log("error.stack is ", error.stack);
+    console.log("error.message is ", error.message);
+  }
+  console.log("Blog Content Worker failed!");
 });
 
-blogContentWorker.on("completed", (job) => {
-  logger.success(`Job ${job.id} in blog content worker completed successfully`);
+blogContentWorker.on("completed", () => {
+  console.log("Blog Content Worker Completed Successfully.");
 });
-
 // Gracefully shutdown Prisma when worker exits
 const shutdown = async () => {
   console.log("Shutting down blog content worker gracefully...");
