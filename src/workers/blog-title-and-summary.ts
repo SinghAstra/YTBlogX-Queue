@@ -63,7 +63,7 @@ async function checkAllJobsCompleted(videoId: string) {
 
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.PROCESSING,
-      message: "Blog summaries are ready! 🎉",
+      message: "🎉Blog summaries are ready! ",
     });
 
     // Generate video overview
@@ -109,8 +109,7 @@ export const blogTitleAndSummaryWorker = new Worker(
     try {
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
-        message:
-          "Summarizing the transcript into clear and concise blogs... ✍️",
+        message: "✍️Summarizing the transcript into clear and concise blogs...",
       });
 
       const blogs: Blog[] = job.data.blogs;
@@ -147,7 +146,7 @@ export const blogTitleAndSummaryWorker = new Worker(
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.FAILED,
-        message: "Hmm... we hit a snag while summarizing. Please try again. 🔥",
+        message: "🔥Hmm... we hit a snag while summarizing. Please try again. ",
       });
 
       // Update video processing state to failed

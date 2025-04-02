@@ -24,7 +24,7 @@ export const videoWorker = new Worker(
 
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.PROCESSING,
-      message: "We're preparing the transcript. Hang tight! 🎥",
+      message: "🎥We're preparing the transcript. Hang tight! ",
     });
 
     const blogTitleAndSummaryTotalJobsRedisKey =
@@ -65,7 +65,7 @@ export const videoWorker = new Worker(
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
-        message: "Generating blog summaries... Almost there! ✍️",
+        message: "✍️Generating blog summaries...  ",
       });
 
       // Get all blogs for the video that don't have summaries yet

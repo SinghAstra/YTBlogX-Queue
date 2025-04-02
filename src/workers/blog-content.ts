@@ -40,7 +40,7 @@ async function checkAllJobsCompleted(videoId: string) {
 
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.COMPLETED,
-      message: "Blog content is ready to read! 🚀",
+      message: "🚀Blog content is ready to read!",
     });
 
     await sendProcessingUpdate(videoId, {
@@ -60,7 +60,7 @@ export const blogContentWorker = new Worker(
     try {
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
-        message: "Crafting detailed blog content. This may take a moment... ⏳",
+        message: "⏳ Crafting detailed blog content. This may take a moment...",
       });
       const video = await prisma.video.findUnique({ where: { id: videoId } });
       const allBlogs = await prisma.blog.findMany({
@@ -101,7 +101,7 @@ export const blogContentWorker = new Worker(
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.FAILED,
         message:
-          "Something went wrong while creating the content. Please try again. 😔",
+          "😔Something went wrong while creating the content. Please try again. ",
       });
 
       await prisma.video.update({
