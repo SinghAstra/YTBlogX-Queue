@@ -11,6 +11,7 @@
     "express": "^4.21.2",
     "ioredis": "^5.6.0",
     "jsonwebtoken": "^9.0.2",
+    "prisma": "^6.5.0",
     "pusher": "^5.2.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.3",
