@@ -8,7 +8,7 @@ const router = Router();
 router.get("/jobs", async (_req: Request, res: Response) => {
   if (process.env.NODE_ENV !== "development") {
     res.status(403).json({
-      error: "This endpoint is only available in development mode",
+      message: "This endpoint is only available in development mode",
     });
     return;
   }
