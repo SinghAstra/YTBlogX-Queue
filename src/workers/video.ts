@@ -20,6 +20,7 @@ const batchSize = BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY;
 export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
+    console.log("In video Worker.");
     const { videoId } = job.data;
 
     await sendProcessingUpdate(videoId, {
@@ -43,6 +44,9 @@ export const videoWorker = new Worker(
       const transcriptData = await YoutubeTranscript.fetchTranscript(
         video.youtubeId
       );
+
+      console.log("transcriptData is ", transcriptData);
+      console.log("transcriptData.length is ", transcriptData.length);
       const transcript = transcriptData.map((entry) => entry.text).join(" ");
       const transcriptChunks = splitTranscript(transcript);
 

@@ -7,6 +7,8 @@ export const videoQueueController = async (req: Request, res: Response) => {
     const { videoId, userId } = req.body.auth;
     console.log("req.body.auth --videoQueueController is ", req.body.auth);
 
+    console.log("Before videoQueue.");
+
     await videoQueue.add(
       QUEUES.VIDEO,
       {
