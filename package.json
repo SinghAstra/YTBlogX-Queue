@@ -22,8 +22,8 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-      "build": "prisma generate && tsc",
-  "postinstall": "prisma generate",
+    "build": "tsc",
+    "postinstall": "prisma generate",
     "watch": "tsc --watch",
     "dev:worker1": "node dist/workers/video.js --id=1",
     "dev:worker2": "node dist/workers/blog-title-and-summary.js --id=2",
