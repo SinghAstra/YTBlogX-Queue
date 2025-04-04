@@ -1,6 +1,6 @@
 import { VideoProcessingState } from "@prisma/client";
 import { Worker } from "bullmq";
-import { YoutubeTranscript } from "youtube-transcript";
+import { Innertube } from "youtubei.js/web";
 import {
   BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY,
   QUEUES,
@@ -41,13 +41,33 @@ export const videoWorker = new Worker(
         throw new Error("Video Not Found.");
       }
 
-      const transcriptData = await YoutubeTranscript.fetchTranscript(
-        video.youtubeId
+      const youtube = await Innertube.create({
+        lang: "en",
+        location: "US",
+        retrieve_player: false,
+      });
+
+      const info = await youtube.getInfo(
+        `https://www.youtube.com/watch?v=${video.youtubeId}`
       );
+      const transcriptData = await info.getTranscript();
 
       console.log("transcriptData is ", transcriptData);
-      console.log("transcriptData.length is ", transcriptData.length);
-      const transcript = transcriptData.map((entry) => entry.text).join(" ");
+      if (
+        !transcriptData.transcript.content ||
+        !transcriptData.transcript.content.body
+      ) {
+        await sendProcessingUpdate(videoId, {
+          status: VideoProcessingState.FAILED,
+          message: "⚠️ Transcript not available for this video.",
+        });
+        return;
+      }
+
+      const transcript = transcriptData.transcript.content.body.initial_segments
+        .map((segment) => segment.snippet.text)
+        .join(" ");
+
       const transcriptChunks = splitTranscript(transcript);
 
       await sendProcessingUpdate(videoId, {
