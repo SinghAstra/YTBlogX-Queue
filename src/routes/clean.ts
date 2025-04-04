@@ -10,7 +10,6 @@ router.get("/jobs", async (_req: Request, res: Response) => {
     res.status(403).json({
       message: "This endpoint is only available in development mode",
     });
-    return;
   }
 
   try {
@@ -19,7 +18,6 @@ router.get("/jobs", async (_req: Request, res: Response) => {
 
     if (keys.length === 0) {
       res.status(200).json({ message: "No jobs found to clean" });
-      return;
     }
 
     // Delete all BullMQ related keys
@@ -39,7 +37,7 @@ router.get("/jobs", async (_req: Request, res: Response) => {
       await queue.close();
     }
 
-    res.status(200).json({
+    res.json({
       message: `Successfully cleaned ${keys.length} BullMQ related keys`,
       queuesEmptied: queueNames,
     });
