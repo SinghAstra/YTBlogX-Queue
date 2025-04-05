@@ -1,4 +1,4 @@
-export function splitTranscript(transcript: string, chunkSize: number = 8000) {
+export function splitTranscript(transcript: string, chunkSize: number = 14000) {
   const sentences = transcript.split(/(?<=[.!?])\s+/);
   const chunks = [];
   let currentChunk = "";

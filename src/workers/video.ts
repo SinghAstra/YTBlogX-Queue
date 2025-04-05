@@ -1,6 +1,5 @@
 import { VideoProcessingState } from "@prisma/client";
 import { Worker } from "bullmq";
-import { Innertube } from "youtubei.js/web";
 import {
   BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY,
   QUEUES,
@@ -23,11 +22,6 @@ export const videoWorker = new Worker(
     console.log("In video Worker.");
     const { videoId } = job.data;
 
-    await sendProcessingUpdate(videoId, {
-      status: VideoProcessingState.PROCESSING,
-      message: "🎥We're preparing the transcript. Hang tight! ",
-    });
-
     const blogTitleAndSummaryTotalJobsRedisKey =
       getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
     const blogTitleAndSummaryCompletedJobsRedisKey =
@@ -41,38 +35,57 @@ export const videoWorker = new Worker(
         throw new Error("Video Not Found.");
       }
 
-      const youtube = await Innertube.create({
-        lang: "en",
-        location: "US",
-        retrieve_player: false,
-      });
-
-      const info = await youtube.getInfo(
+      const response = await fetch(
         `https://www.youtube.com/watch?v=${video.youtubeId}`
       );
-      const transcriptData = await info.getTranscript();
+      const data = await response.text();
 
-      console.log("transcriptData is ", transcriptData);
-      if (
-        !transcriptData.transcript.content ||
-        !transcriptData.transcript.content.body
-      ) {
-        await sendProcessingUpdate(videoId, {
-          status: VideoProcessingState.FAILED,
-          message: "⚠️ Transcript not available for this video.",
-        });
-        return;
+      const pattern = /ytInitialPlayerResponse\s*=\s*({.+?});/;
+      const match = data.match(pattern);
+
+      if (!match || !match[1]) {
+        throw new Error("ytInitialPlayerResponse not found");
       }
 
-      const transcript = transcriptData.transcript.content.body.initial_segments
-        .map((segment) => segment.snippet.text)
-        .join(" ");
+      const playerResponse = JSON.parse(match[1]);
+
+      // 1. Get caption tracks
+      const tracks =
+        playerResponse?.captions?.playerCaptionsTracklistRenderer
+          ?.captionTracks;
+
+      if (!tracks || tracks.length === 0) {
+        throw new Error("No captions found");
+      }
+
+      // 2. Find the English ASR track
+      const transcriptTrack = tracks.find((t: any) => t.languageCode === "en");
+
+      if (!transcriptTrack) {
+        throw new Error("English transcript not found");
+      }
+
+      const transcriptUrl = transcriptTrack.baseUrl + "&fmt=json3";
+
+      // 3. Fetch the transcript
+      const transcriptRes = await fetch(transcriptUrl);
+      const transcriptJson = await transcriptRes.json();
+
+      // 4. Extract text lines
+      let transcript: string = "";
+      for (const event of transcriptJson.events || []) {
+        if (event.segs) {
+          const text = event.segs.map((seg: any) => seg.utf8).join("");
+          if (text.trim() === "") continue;
+          transcript += text.trim() + " ";
+        }
+      }
 
       const transcriptChunks = splitTranscript(transcript);
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
-        message: `We’ve split the transcript into ${transcriptChunks.length} parts. Moving on! 🚀`,
+        message: `🚀 We will be generating ${transcriptChunks.length} blogs for ${video.title}. `,
       });
 
       const createBlogWithTranscript = transcriptChunks.map((chunk, index) => {
@@ -140,7 +153,10 @@ export const videoWorker = new Worker(
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.FAILED,
-        message: "⚠️ Oops! Something went wrong. Please try again later. ",
+        message:
+          error instanceof Error
+            ? error.message
+            : "⚠️ Oops! Something went wrong. Please try again later. ",
       });
     }
   },

@@ -60,7 +60,7 @@ export const blogContentWorker = new Worker(
     try {
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
-        message: "⏳ Crafting detailed blog content. This may take a moment...",
+        message: `⏳ Writing blog for ${blog.title}...`,
       });
       const video = await prisma.video.findUnique({ where: { id: videoId } });
       const allBlogs = await prisma.blog.findMany({
@@ -101,9 +101,10 @@ export const blogContentWorker = new Worker(
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.FAILED,
         message:
-          "😔Something went wrong while creating the content. Please try again. ",
+          error instanceof Error
+            ? `⚠️Oops ${error.message}`
+            : "⚠️Oops! Something went wrong. Please try again later. ",
       });
-
       await prisma.video.update({
         where: { id: videoId },
         data: { processingState: "FAILED" },

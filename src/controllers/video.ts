@@ -1,5 +1,7 @@
+import { VideoProcessingState } from "@prisma/client";
 import { Request, Response } from "express";
 import { QUEUES } from "../lib/constants";
+import { sendProcessingUpdate } from "../lib/pusher/send-update";
 import { videoQueue } from "../queue";
 
 export const videoQueueController = async (req: Request, res: Response) => {
@@ -8,6 +10,11 @@ export const videoQueueController = async (req: Request, res: Response) => {
     console.log("req.body.auth --videoQueueController is ", req.body.auth);
 
     console.log("Before videoQueue.");
+
+    await sendProcessingUpdate(videoId, {
+      status: VideoProcessingState.PROCESSING,
+      message: "🎥We're downloading the transcript. Hang tight! ",
+    });
 
     await videoQueue.add(
       QUEUES.VIDEO,

@@ -18,14 +18,21 @@ import { blogContentQueue } from "../queue/index.js";
 
 // Function to update summaries in the database
 async function updateTitlesAndSummaries(
-  summaries: { id: string; summary: string; title: string }[]
+  summaries: { id: string; summary: string; title: string }[],
+  videoId: string
 ) {
-  const updatePromises = summaries.map(({ id, summary, title }) =>
-    prisma.blog.update({
+  summaries.map(async (summary) => {
+    await sendProcessingUpdate(videoId, {
+      status: VideoProcessingState.PROCESSING,
+      message: `✍️Generating summary for ${summary.title}`,
+    });
+  });
+  const updatePromises = summaries.map(({ id, summary, title }) => {
+    return prisma.blog.update({
       where: { id },
       data: { summary, title },
-    })
-  );
+    });
+  });
 
   return await prisma.$transaction(updatePromises);
 }
@@ -107,11 +114,6 @@ export const blogTitleAndSummaryWorker = new Worker(
       getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
 
     try {
-      await sendProcessingUpdate(videoId, {
-        status: VideoProcessingState.PROCESSING,
-        message: "✍️Summarizing the transcript into clear and concise blogs...",
-      });
-
       const blogs: Blog[] = job.data.blogs;
 
       // Generate summaries
@@ -130,7 +132,7 @@ export const blogTitleAndSummaryWorker = new Worker(
 
         if (validTitlesAndSummaries.length > 0) {
           // Update database with transaction
-          await updateTitlesAndSummaries(validTitlesAndSummaries);
+          await updateTitlesAndSummaries(validTitlesAndSummaries, videoId);
           console.log(
             `Successfully updated ${validTitlesAndSummaries.length} blogs with title and summary`
           );
@@ -146,7 +148,10 @@ export const blogTitleAndSummaryWorker = new Worker(
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.FAILED,
-        message: "🔥Hmm... we hit a snag while summarizing. Please try again. ",
+        message:
+          error instanceof Error
+            ? `⚠️Oops ${error.message}`
+            : "⚠️Oops! Something went wrong. Please try again later. ",
       });
 
       // Update video processing state to failed

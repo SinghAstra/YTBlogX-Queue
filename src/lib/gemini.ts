@@ -62,9 +62,9 @@ export async function checkLimits() {
   };
 }
 
-async function sleepForOneMinute() {
-  console.log(`Rate limit exceeded. Waiting for 1000ms...`);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+async function sleep() {
+  console.log(`Rate limit exceeded. Waiting for 1500ms...`);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 }
 
 export async function estimateTokenCount(
@@ -84,7 +84,7 @@ export async function handleRateLimit(tokenCount: number) {
   const { requestsExceeded, tokensExceeded } = limitsResponse;
 
   if (requestsExceeded || tokensExceeded) {
-    await sleepForOneMinute();
+    await sleep();
   }
 
   await trackRequest(tokenCount);
@@ -103,7 +103,7 @@ async function handleRequestExceeded() {
 export async function generateTitleAndSummaries(
   transcriptBatch: { id: string; transcript: string }[]
 ) {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     try {
       const prompt = `
       You are a concise summarizer and title generator for YouTube video transcripts. 
@@ -165,7 +165,7 @@ export async function generateTitleAndSummaries(
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleepForOneMinute();
+        sleep();
         continue;
       }
 
@@ -176,27 +176,28 @@ export async function generateTitleAndSummaries(
         ) ||
           error.stack?.includes("SyntaxError"))
       ) {
-        i = i - 1;
         console.log("--------------------------------");
         console.log(`Syntax Error occurred. Trying again for ${i} time`);
         console.log("--------------------------------");
 
         continue;
-      } else {
-        throw new Error(
-          "Could Not generate batch title and summaries, maybe ai model is down."
-        );
       }
+
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Could Not generate title and summaries, unexpected error occurred."
+      );
     }
   }
   throw new Error(
-    "Could Not generate batch title and summaries, maybe ai model is down."
+    "Could Not generate title and summaries, unexpected error occurred."
   );
 }
 
 // Function to generate a video overview based on summaries
 export async function generateVideoOverview(videoId: string) {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     try {
       // Fetch all blog summaries for the given videoId
       const blogs = await prisma.blog.findMany({
@@ -254,21 +255,26 @@ export async function generateVideoOverview(videoId: string) {
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleepForOneMinute();
+        sleep();
         continue;
       }
-
-      throw error;
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Could Not generate video overview, unexpected error occurred."
+      );
     }
   }
+  throw new Error(
+    "Could Not generate video overview, unexpected error occurred."
+  );
 }
-
 export async function generateBlogContent(
   overview: string,
   allSummaries: string,
   transcript: string
 ) {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     try {
       const prompt = `
       You are a professional blog writer. Using the provided video overview, 
@@ -306,12 +312,19 @@ export async function generateBlogContent(
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleepForOneMinute();
+        sleep();
         continue;
       }
-      throw error;
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Could Not generate blog content, unexpected error occurred."
+      );
     }
   }
+  throw new Error(
+    "Could Not generate blog content, unexpected error occurred."
+  );
 }
 
 function isValidBatchTitleAndSummaryResponse(
