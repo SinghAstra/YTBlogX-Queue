@@ -102,7 +102,7 @@ export const videoWorker = new Worker(
 
       await sendProcessingUpdate(videoId, {
         status: VideoProcessingState.PROCESSING,
-        message: "✍️Generating blog summaries...  ",
+        message: "🧠 Generating blog summaries...  ",
       });
 
       // Get all blogs for the video that don't have summaries yet

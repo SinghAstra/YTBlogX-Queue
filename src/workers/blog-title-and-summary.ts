@@ -24,7 +24,7 @@ async function updateTitlesAndSummaries(
   summaries.map(async (summary) => {
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.PROCESSING,
-      message: `✍️Generating summary for ${summary.title}`,
+      message: `✍️ Generating summary for ${summary.title}`,
     });
   });
   const updatePromises = summaries.map(({ id, summary, title }) => {
@@ -70,7 +70,7 @@ async function checkAllJobsCompleted(videoId: string) {
 
     await sendProcessingUpdate(videoId, {
       status: VideoProcessingState.PROCESSING,
-      message: "🎉Blog summaries are ready! ",
+      message: "🎉 Generated Summary for all the blogs! ",
     });
 
     // Generate video overview
@@ -150,8 +150,8 @@ export const blogTitleAndSummaryWorker = new Worker(
         status: VideoProcessingState.FAILED,
         message:
           error instanceof Error
-            ? `⚠️Oops ${error.message}`
-            : "⚠️Oops! Something went wrong. Please try again later. ",
+            ? `⚠️ Oops ${error.message}`
+            : "⚠️ Oops! Something went wrong. Please try again later. ",
       });
 
       // Update video processing state to failed
