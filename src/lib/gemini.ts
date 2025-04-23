@@ -138,6 +138,8 @@ export async function generateTitleAndSummaries(
       const result = await model.generateContent(prompt);
       let rawResponse = result.response.text();
 
+      console.log("rawResponse is ", rawResponse);
+
       // Remove potential Markdown or extra text
       rawResponse = rawResponse
         .replace(/```json/g, "") // Remove ```json
@@ -340,11 +342,11 @@ function isValidBatchTitleAndSummaryResponse(
     if (
       typeof item !== "object" ||
       item === null ||
-      !item.title.trim() ||
-      !item.summary.trim() ||
       typeof item.id !== "string" ||
       typeof item.title !== "string" ||
       typeof item.summary !== "string" ||
+      !item.title.trim() ||
+      !item.summary.trim() ||
       Object.keys(item).length !== 3
     ) {
       return false;

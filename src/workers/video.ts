@@ -39,6 +39,7 @@ export const videoWorker = new Worker(
         `https://www.youtube.com/watch?v=${video.youtubeId}`
       );
       const data = await response.text();
+      console.log("data is ", data);
 
       const pattern = /ytInitialPlayerResponse\s*=\s*({.+?});/;
       const match = data.match(pattern);

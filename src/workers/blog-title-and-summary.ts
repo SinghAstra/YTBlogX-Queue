@@ -119,25 +119,11 @@ export const blogTitleAndSummaryWorker = new Worker(
       // Generate summaries
       const titlesAndSummaries = await generateTitleAndSummaries(blogs);
 
-      // Validate and update summaries
-      if (titlesAndSummaries && Array.isArray(titlesAndSummaries)) {
-        const validTitlesAndSummaries = titlesAndSummaries.filter(
-          (titlesAndSummary) =>
-            titlesAndSummary &&
-            typeof titlesAndSummary.id === "string" &&
-            typeof titlesAndSummary.summary === "string" &&
-            typeof titlesAndSummary.title === "string" &&
-            blogs.some((blog) => blog.id === titlesAndSummary.id)
-        );
-
-        if (validTitlesAndSummaries.length > 0) {
-          // Update database with transaction
-          await updateTitlesAndSummaries(validTitlesAndSummaries, videoId);
-          console.log(
-            `Successfully updated ${validTitlesAndSummaries.length} blogs with title and summary`
-          );
-        }
-      }
+      // Update database with transaction
+      await updateTitlesAndSummaries(titlesAndSummaries, videoId);
+      console.log(
+        `Successfully updated ${titlesAndSummaries.length} blogs with title and summary`
+      );
 
       await redisClient.incr(blogTitleAndSummaryCompletedJobsRedisKey);
     } catch (error) {
