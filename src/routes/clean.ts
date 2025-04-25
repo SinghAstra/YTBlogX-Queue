@@ -1,55 +1,72 @@
 import { Queue } from "bullmq";
+import "dotenv/config";
 import { Request, Response, Router } from "express";
 import { QUEUES } from "../lib/constants.js";
-import redis from "../lib/redis.js";
+import redisConnection from "../lib/redis.js";
+import { verifyCleanJobToken } from "../middleware/verify-clean-job-token.js";
 
 const router = Router();
 
-router.get("/jobs", async (_req: Request, res: Response) => {
-  if (process.env.NODE_ENV !== "development") {
-    res.status(403).json({
-      message: "This endpoint is only available in development mode",
-    });
+router.get(
+  "/jobs",
+  verifyCleanJobToken,
+  async (_req: Request, res: Response) => {
+    try {
+      let cursor = "0";
+      let keys: string[] = [];
+
+      do {
+        // Scan for batches of keys matching the pattern
+        const [nextCursor, scanKeys] = await redisConnection.scan(
+          cursor,
+          "MATCH",
+          "bull:*",
+          "COUNT",
+          "100"
+        );
+
+        cursor = nextCursor;
+        keys = keys.concat(scanKeys);
+
+        // Delete keys in batches to avoid memory issues
+        if (scanKeys.length > 0) {
+          // Delete in smaller chunks to avoid Redis command length limits
+          const chunkSize = 100;
+          for (let i = 0; i < scanKeys.length; i += chunkSize) {
+            const chunk = scanKeys.slice(i, i + chunkSize);
+            await redisConnection.del(...chunk);
+          }
+        }
+      } while (cursor !== "0");
+
+      console.log("Total keys found and deleted:", keys.length);
+
+      const queueNames = [
+        QUEUES.VIDEO,
+        QUEUES.BLOG_TITLE_AND_SUMMARY,
+        QUEUES.BLOG_CONTENT,
+      ];
+
+      for (const queueName of queueNames) {
+        const queue = new Queue(queueName, { connection: redisConnection });
+        await queue.obliterate({ force: true });
+        await queue.close();
+      }
+
+      res.status(200).json({
+        message: `Successfully cleaned ${keys.length} BullMQ related keys`,
+        queuesEmptied: queueNames,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        console.log("error.stack is ", error.stack);
+        console.log("error.message is ", error.message);
+      }
+      res.status(500).json({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
-
-  try {
-    // Get all keys that match BullMQ job patterns
-    const keys = await redis.keys("bull:*");
-
-    if (keys.length === 0) {
-      res.status(200).json({ message: "No jobs found to clean" });
-    }
-
-    // Delete all BullMQ related keys
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-
-    const queueNames = [
-      QUEUES.VIDEO,
-      QUEUES.BLOG_TITLE_AND_SUMMARY,
-      QUEUES.BLOG_CONTENT,
-    ];
-
-    for (const queueName of queueNames) {
-      const queue = new Queue(queueName, { connection: redis });
-      await queue.obliterate({ force: true });
-      await queue.close();
-    }
-
-    res.json({
-      message: `Successfully cleaned ${keys.length} BullMQ related keys`,
-      queuesEmptied: queueNames,
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      console.log("error.stack is ", error.stack);
-      console.log("error.message is ", error.message);
-    }
-    res.status(500).json({
-      message: "Failed to clean jobs",
-    });
-  }
-});
+);
 
 export default router;

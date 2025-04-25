@@ -16,6 +16,24 @@ import { blogTitleAndSummaryQueue } from "../queue/index.js";
 
 const batchSize = BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY;
 
+const fetchProxies = async () => {
+  try {
+    const response = await fetch(
+      "https://www.proxyscrape.com/free-proxy-list",
+      {
+        method: "GET",
+      }
+    );
+    const data = await response.text();
+    // Parse the proxies (example: split by line and filter out unwanted formats)
+    const proxyList = data.split("\n").filter((proxy) => proxy.trim());
+    return proxyList;
+  } catch (error) {
+    console.error("Error fetching proxies:", error);
+    return [];
+  }
+};
+
 export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
@@ -35,17 +53,22 @@ export const videoWorker = new Worker(
         throw new Error("Video Not Found.");
       }
 
+      const proxies = await fetchProxies();
+
+      console.log("proxies are ", proxies);
+
+      const proxy = proxies[Math.floor(Math.random() * proxies.length)];
+
       const response = await fetch(
         `https://www.youtube.com/watch?v=${video.youtubeId}`,
         {
+          method: "GET",
           headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+            Proxy: `http://${proxy}`,
           },
         }
       );
       const data = await response.text();
-      console.log("data is ", data);
 
       const pattern = /ytInitialPlayerResponse\s*=\s*({.+?});/;
       const match = data.match(pattern);
@@ -123,6 +146,12 @@ export const videoWorker = new Worker(
           transcript: true,
         },
       });
+
+      const parsedBlogs = blogs.map((blog) => {
+        return { id: blog.id };
+      });
+
+      console.log("parsedBlogs are ", parsedBlogs);
 
       const totalBlogTitleAndSummaryJobs = Math.ceil(blogs.length / batchSize);
 

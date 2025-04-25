@@ -16,6 +16,8 @@ export const videoQueueController = async (req: Request, res: Response) => {
       message: "🎥We're downloading the transcript. Hang tight! ",
     });
 
+    console.log("After sendProcessingUpdate.");
+
     await videoQueue.add(
       QUEUES.VIDEO,
       {
@@ -30,6 +32,8 @@ export const videoQueueController = async (req: Request, res: Response) => {
         },
       }
     );
+
+    console.log("After videoQueue.add.");
 
     res.status(200).json({ success: true });
   } catch (error) {
