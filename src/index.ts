@@ -10,7 +10,7 @@ app.use(express.json());
 
 app.get("/", (req, res) => {
   res.json({
-    message: "Service is up and running.",
+    message: "Server is up and running.",
   });
 });
 app.use("/api/queue", queueRoutes);
