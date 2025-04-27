@@ -104,13 +104,9 @@ export const videoWorker = new Worker(
         if (event.segs) {
           const text = event.segs.map((seg: any) => seg.utf8).join("");
           if (text.trim() === "") continue;
-          transcript += text.trim() + " ";
+          transcript += text.trim().replace(/[^\x00-\x7F]/g, "") + " ";
         }
       }
-
-      transcript = transcript
-        .replace(/\u2026/g, "...")
-        .replace(/[^\x00-\x7F]/g, "");
 
       const transcriptChunks = splitTranscript(transcript);
 
