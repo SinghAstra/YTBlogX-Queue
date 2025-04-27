@@ -4,7 +4,7 @@ import { QUEUES } from "../lib/constants";
 import { sendProcessingUpdate } from "../lib/pusher/send-update";
 import { videoQueue } from "../queue";
 
-export const videoQueueController = async (req: Request, res: Response) => {
+export const addToVideoQueue = async (req: Request, res: Response) => {
   try {
     const { videoId, userId } = req.body.auth;
     console.log("req.body.auth --videoQueueController is ", req.body.auth);

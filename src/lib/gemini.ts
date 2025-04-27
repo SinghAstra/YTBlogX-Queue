@@ -62,9 +62,9 @@ export async function checkLimits() {
   };
 }
 
-async function sleep() {
-  console.log(`Rate limit exceeded. Waiting for 1500ms...`);
-  await new Promise((resolve) => setTimeout(resolve, 1500));
+async function sleep(time: number) {
+  console.log(`Sleeping for ${1000 * time}ms...`);
+  await new Promise((resolve) => setTimeout(resolve, time * 1000));
 }
 
 export async function estimateTokenCount(
@@ -84,7 +84,7 @@ export async function handleRateLimit(tokenCount: number) {
   const { requestsExceeded, tokensExceeded } = limitsResponse;
 
   if (requestsExceeded || tokensExceeded) {
-    await sleep();
+    await sleep(2);
   }
 
   await trackRequest(tokenCount);
@@ -167,7 +167,7 @@ export async function generateTitleAndSummaries(
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleep();
+        sleep(i);
         continue;
       }
 
@@ -181,7 +181,7 @@ export async function generateTitleAndSummaries(
         console.log("--------------------------------");
         console.log(`Syntax Error occurred. Trying again for ${i} time`);
         console.log("--------------------------------");
-
+        sleep(i);
         continue;
       }
 
@@ -257,7 +257,7 @@ export async function generateVideoOverview(videoId: string) {
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleep();
+        sleep(1);
         continue;
       }
       throw new Error(
@@ -300,9 +300,27 @@ export async function generateBlogContent(
       await handleRateLimit(tokenCount);
 
       const result = await model.generateContent(prompt);
-      const blogContent = result.response.text().trim();
 
-      return blogContent;
+      let rawResponse = result.response.text();
+      rawResponse = rawResponse.trim();
+      // Clean up response
+      if (
+        rawResponse.startsWith("```mdx") ||
+        rawResponse.startsWith("```json")
+      ) {
+        console.log("Inside rawResponse starts with ```mdx");
+        console.log("rawResponse is ", rawResponse);
+        rawResponse = rawResponse
+          .replace(/^```(mdx|json)\s*/, "")
+          .replace(/```$/, "")
+          .trim();
+      }
+
+      if (typeof rawResponse !== "string") {
+        throw new Error("rawResponse is not a string");
+      }
+
+      return rawResponse;
     } catch (error) {
       if (error instanceof Error) {
         console.log("error.stack is ", error.stack);
@@ -314,7 +332,7 @@ export async function generateBlogContent(
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleep();
+        sleep(1);
         continue;
       }
       throw new Error(
@@ -349,6 +367,16 @@ function isValidBatchTitleAndSummaryResponse(
       !item.summary.trim() ||
       Object.keys(item).length !== 3
     ) {
+      return false;
+    }
+
+    // Check if the ID exists in the original transcriptBatch
+    const originalItem = transcriptBatch.find((t) => t.id === item.id);
+    if (!originalItem) {
+      console.log(
+        "item which was generated but did not exist in transcriptBatch is ",
+        item
+      );
       return false;
     }
   }

@@ -55,8 +55,6 @@ export const videoWorker = new Worker(
 
       const proxies = await fetchProxies();
 
-      console.log("proxies are ", proxies);
-
       const proxy = proxies[Math.floor(Math.random() * proxies.length)];
 
       const response = await fetch(
@@ -110,6 +108,10 @@ export const videoWorker = new Worker(
           transcript += text.trim() + " ";
         }
       }
+
+      transcript = transcript
+        .replace(/\u2026/g, "...")
+        .replace(/[^\x00-\x7F]/g, "");
 
       const transcriptChunks = splitTranscript(transcript);
 
