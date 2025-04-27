@@ -1,18 +1,17 @@
-import { VideoProcessingState } from "@prisma/client";
+import { VideoStatus } from "@prisma/client";
 import { Worker } from "bullmq";
 import {
   BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY,
   QUEUES,
 } from "../lib/constants.js";
 import { prisma } from "../lib/prisma.js";
-import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogTitleAndSummaryCompletedJobsRedisKey,
   getBlogTitleAndSummaryTotalJobsRedisKey,
 } from "../lib/redis-keys.js";
 import redisClient from "../lib/redis.js";
 import { splitTranscript } from "../lib/split-transcript.js";
-import { blogTitleAndSummaryQueue } from "../queue/index.js";
+import { blogTitleAndSummaryQueue, logQueue } from "../queue/index.js";
 
 const batchSize = BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY;
 
@@ -115,10 +114,21 @@ export const videoWorker = new Worker(
 
       const transcriptChunks = splitTranscript(transcript);
 
-      await sendProcessingUpdate(videoId, {
-        status: VideoProcessingState.PROCESSING,
-        message: `🚀 We will be generating ${transcriptChunks.length} blogs for ${video.title}. `,
-      });
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.PROCESSING,
+          message: `🚀 We will be generating ${transcriptChunks.length} blogs for ${video.title}. `,
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
 
       const createBlogWithTranscript = transcriptChunks.map((chunk, index) => {
         return prisma.blog.create({
@@ -132,10 +142,21 @@ export const videoWorker = new Worker(
 
       await prisma.$transaction(createBlogWithTranscript);
 
-      await sendProcessingUpdate(videoId, {
-        status: VideoProcessingState.PROCESSING,
-        message: "🧠 Generating blog summaries...  ",
-      });
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.PROCESSING,
+          message: "🧠 Generating blog summaries...  ",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
 
       // Get all blogs for the video that don't have summaries yet
       const blogs = await prisma.blog.findMany({
@@ -186,16 +207,27 @@ export const videoWorker = new Worker(
 
       await prisma.video.update({
         where: { id: videoId },
-        data: { processingState: "FAILED" },
+        data: { status: "FAILED" },
       });
 
-      await sendProcessingUpdate(videoId, {
-        status: VideoProcessingState.FAILED,
-        message:
-          error instanceof Error
-            ? error.message
-            : "⚠️ Oops! Something went wrong. Please try again later. ",
-      });
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.FAILED,
+          message:
+            error instanceof Error
+              ? error.message
+              : "⚠️ Oops! Something went wrong. Please try again later. ",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
     }
   },
   {

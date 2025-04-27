@@ -1,8 +1,7 @@
-import { VideoProcessingState } from "@prisma/client";
+import { VideoStatus } from "@prisma/client";
 import { Request, Response } from "express";
 import { QUEUES } from "../lib/constants";
-import { sendProcessingUpdate } from "../lib/pusher/send-update";
-import { videoQueue } from "../queue";
+import { logQueue, videoQueue } from "../queue";
 
 export const addToVideoQueue = async (req: Request, res: Response) => {
   try {
@@ -11,10 +10,21 @@ export const addToVideoQueue = async (req: Request, res: Response) => {
 
     console.log("Before videoQueue.");
 
-    await sendProcessingUpdate(videoId, {
-      status: VideoProcessingState.PROCESSING,
-      message: "🎥We're downloading the transcript. Hang tight! ",
-    });
+    await logQueue.add(
+      QUEUES.LOG,
+      {
+        videoId,
+        status: VideoStatus.FAILED,
+        message: "🎥We're downloading the transcript. Hang tight! ",
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 5000,
+        },
+      }
+    );
 
     console.log("After sendProcessingUpdate.");
 

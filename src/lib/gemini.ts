@@ -63,8 +63,8 @@ export async function checkLimits() {
 }
 
 async function sleep(time: number) {
-  console.log(`Sleeping for ${1000 * time}ms...`);
-  await new Promise((resolve) => setTimeout(resolve, time * 1000));
+  console.log(`Sleeping for ${2000 * time}ms...`);
+  await new Promise((resolve) => setTimeout(resolve, time * 2000));
 }
 
 export async function estimateTokenCount(
@@ -167,7 +167,7 @@ export async function generateTitleAndSummaries(
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleep(i);
+        sleep(i + 1);
         continue;
       }
 
@@ -181,7 +181,7 @@ export async function generateTitleAndSummaries(
         console.log("--------------------------------");
         console.log(`Syntax Error occurred. Trying again for ${i} time`);
         console.log("--------------------------------");
-        sleep(i);
+        sleep(i + 1);
         continue;
       }
 
@@ -257,7 +257,7 @@ export async function generateVideoOverview(videoId: string) {
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleep(1);
+        sleep(i + 1);
         continue;
       }
       throw new Error(
@@ -332,7 +332,7 @@ export async function generateBlogContent(
         error.message.includes("429 Too Many Requests")
       ) {
         await handleRequestExceeded();
-        sleep(1);
+        sleep(i + 1);
         continue;
       }
       throw new Error(

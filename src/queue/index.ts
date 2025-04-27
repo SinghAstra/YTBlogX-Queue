@@ -16,3 +16,7 @@ export const blogTitleAndSummaryQueue = new Queue(
 export const blogContentQueue = new Queue(QUEUES.BLOG_CONTENT, {
   connection: redisClient,
 });
+
+export const logQueue = new Queue(QUEUES.LOG, {
+  connection: redisClient,
+});

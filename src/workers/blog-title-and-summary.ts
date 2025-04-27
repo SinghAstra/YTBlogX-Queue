@@ -1,4 +1,4 @@
-import { Blog, VideoProcessingState } from "@prisma/client";
+import { Blog, VideoStatus } from "@prisma/client";
 import { Worker } from "bullmq";
 import { QUEUES } from "../lib/constants.js";
 import {
@@ -14,7 +14,7 @@ import {
   getBlogTitleAndSummaryTotalJobsRedisKey,
 } from "../lib/redis-keys.js";
 import redisClient from "../lib/redis.js";
-import { blogContentQueue } from "../queue/index.js";
+import { blogContentQueue, logQueue } from "../queue/index.js";
 
 // Function to update summaries in the database
 async function updateTitlesAndSummaries(
@@ -22,10 +22,21 @@ async function updateTitlesAndSummaries(
   videoId: string
 ) {
   summaries.map(async (summary) => {
-    await sendProcessingUpdate(videoId, {
-      status: VideoProcessingState.PROCESSING,
-      message: `✍️ Generating summary for ${summary.title}`,
-    });
+    await logQueue.add(
+      QUEUES.LOG,
+      {
+        videoId,
+        status: VideoStatus.PROCESSING,
+        message: `✍️ Generating summary for ${summary.title}`,
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 5000,
+        },
+      }
+    );
   });
   const updatePromises = summaries.map(({ id, summary, title }) => {
     return prisma.blog.update({
@@ -68,10 +79,21 @@ async function checkAllJobsCompleted(videoId: string) {
     );
     console.log("-------------------------------------------------------");
 
-    await sendProcessingUpdate(videoId, {
-      status: VideoProcessingState.PROCESSING,
-      message: "🎉 Generated Summary for all the blogs! ",
-    });
+    await logQueue.add(
+      QUEUES.LOG,
+      {
+        videoId,
+        status: VideoStatus.PROCESSING,
+        message: "🎉 Generated Summary for all the blogs! ",
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 5000,
+        },
+      }
+    );
 
     // Generate video overview
     const overview = await generateVideoOverview(videoId);
@@ -132,18 +154,29 @@ export const blogTitleAndSummaryWorker = new Worker(
         console.log("error.message is ", error.message);
       }
 
-      await sendProcessingUpdate(videoId, {
-        status: VideoProcessingState.FAILED,
-        message:
-          error instanceof Error
-            ? `⚠️ Oops ${error.message}`
-            : "⚠️ Oops! Something went wrong. Please try again later. ",
-      });
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.FAILED,
+          message:
+            error instanceof Error
+              ? `⚠️ Oops ${error.message}`
+              : "⚠️ Oops! Something went wrong. Please try again later. ",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
 
       // Update video processing state to failed
       await prisma.video.update({
         where: { id: videoId },
-        data: { processingState: "FAILED" },
+        data: { status: "FAILED" },
       });
     } finally {
       await checkAllJobsCompleted(videoId);
