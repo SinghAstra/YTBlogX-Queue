@@ -94,6 +94,8 @@ export const videoWorker = new Worker(
 
       const transcriptUrl = transcriptTrack.baseUrl + "&fmt=json3";
 
+      console.log("transcriptUrl is ", transcriptUrl);
+
       // 3. Fetch the transcript
       const transcriptRes = await fetch(transcriptUrl);
       const transcriptJson = await transcriptRes.json();

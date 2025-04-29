@@ -12,7 +12,7 @@ if (!GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const REQUEST_LIMIT = 15;
 const TOKEN_LIMIT = 800000;
@@ -103,7 +103,7 @@ async function handleRequestExceeded() {
 export async function generateTitleAndSummaries(
   transcriptBatch: { id: string; transcript: string }[]
 ) {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 100; i++) {
     try {
       const prompt = `
       You are a concise summarizer and title generator for YouTube video transcripts. 
@@ -164,8 +164,11 @@ export async function generateTitleAndSummaries(
 
       if (
         error instanceof Error &&
-        error.message.includes("429 Too Many Requests")
+        error.message.includes("GoogleGenerativeAI Error")
       ) {
+        console.log(
+          `Trying again for ${i + 1} time --generateTitleAndSummaries`
+        );
         await handleRequestExceeded();
         sleep(i + 1);
         continue;
@@ -199,7 +202,7 @@ export async function generateTitleAndSummaries(
 
 // Function to generate a video overview based on summaries
 export async function generateVideoOverview(videoId: string) {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 100; i++) {
     try {
       // Fetch all blog summaries for the given videoId
       const blogs = await prisma.blog.findMany({
@@ -251,11 +254,11 @@ export async function generateVideoOverview(videoId: string) {
         console.log("error.stack is ", error.stack);
         console.log("error.message is ", error.message);
       }
-
       if (
         error instanceof Error &&
-        error.message.includes("429 Too Many Requests")
+        error.message.includes("GoogleGenerativeAI Error")
       ) {
+        console.log(`Trying again for ${i + 1} time --generateVideoOverview`);
         await handleRequestExceeded();
         sleep(i + 1);
         continue;
@@ -329,8 +332,9 @@ export async function generateBlogContent(
 
       if (
         error instanceof Error &&
-        error.message.includes("429 Too Many Requests")
+        error.message.includes("GoogleGenerativeAI Error")
       ) {
+        console.log(`Trying again for ${i + 1} time --generateBlogContent`);
         await handleRequestExceeded();
         sleep(i + 1);
         continue;
