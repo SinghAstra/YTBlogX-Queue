@@ -279,7 +279,7 @@ export async function generateBlogContent(
   allSummaries: string,
   transcript: string
 ) {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 100; i++) {
     try {
       const prompt = `
       You are a professional blog writer. Using the provided video overview, 
@@ -323,6 +323,8 @@ export async function generateBlogContent(
         throw new Error("rawResponse is not a string");
       }
 
+      console.log("parsedResponse is ", rawResponse);
+
       return rawResponse;
     } catch (error) {
       if (error instanceof Error) {
@@ -355,31 +357,51 @@ function isValidBatchTitleAndSummaryResponse(
   data: any,
   transcriptBatch: { id: string; transcript: string }[]
 ) {
-  if (!Array.isArray(data) || transcriptBatch.length !== data.length) {
+  if (!Array.isArray(data)) {
+    console.log("Validation failed: Response is not an array.");
     return false;
   }
 
-  // Validate each item in the array
+  // if (transcriptBatch.length !== data.length) {
+  //   console.log(
+  //     `Validation failed: Expected ${transcriptBatch.length} items, got ${data.length}.`
+  //   );
+  //   return false;
+  // }
+
   for (const item of data) {
-    if (
-      typeof item !== "object" ||
-      item === null ||
-      typeof item.id !== "string" ||
-      typeof item.title !== "string" ||
-      typeof item.summary !== "string" ||
-      !item.title.trim() ||
-      !item.summary.trim() ||
-      Object.keys(item).length !== 3
-    ) {
+    if (typeof item !== "object" || item === null) {
+      console.log("Validation failed: Item is not an object or is null:", item);
       return false;
     }
 
-    // Check if the ID exists in the original transcriptBatch
+    if (
+      typeof item.id !== "string" ||
+      typeof item.title !== "string" ||
+      typeof item.summary !== "string"
+    ) {
+      console.log(
+        "Validation failed: Missing or invalid types for keys in:",
+        item
+      );
+      return false;
+    }
+
+    if (!item.title.trim() || !item.summary.trim()) {
+      console.log("Validation failed: Empty title or summary in:", item);
+      return false;
+    }
+
+    if (Object.keys(item).length !== 3) {
+      console.log("Validation failed: Unexpected keys in:", item);
+      return false;
+    }
+
     const originalItem = transcriptBatch.find((t) => t.id === item.id);
     if (!originalItem) {
       console.log(
-        "item which was generated but did not exist in transcriptBatch is ",
-        item
+        "Validation failed: ID not found in original transcriptBatch:",
+        item.id
       );
       return false;
     }

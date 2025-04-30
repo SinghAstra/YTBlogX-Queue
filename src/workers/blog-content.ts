@@ -1,11 +1,12 @@
 import { VideoStatus } from "@prisma/client";
 import { Worker } from "bullmq";
-import { QUEUES } from "../lib/constants.js";
+import { BLOG_CONTENT_WORKERS, QUEUES } from "../lib/constants.js";
 import { generateBlogContent } from "../lib/gemini.js";
 import { prisma } from "../lib/prisma.js";
 import {
   getBlogContentCompletedJobsRedisKey,
   getBlogContentTotalJobsRedisKey,
+  getVideoCancelledRedisKey,
 } from "../lib/redis-keys.js";
 import redisClient from "../lib/redis.js";
 import { logQueue } from "../queue/index.js";
@@ -75,8 +76,14 @@ async function checkAllJobsCompleted(videoId: string) {
 export const blogContentWorker = new Worker(
   QUEUES.BLOG_CONTENT,
   async (job) => {
-    const { blog } = job.data;
-    const videoId = blog.videoId;
+    const { blog, videoId } = job.data;
+    const isCancelled = await redisClient.get(
+      getVideoCancelledRedisKey(videoId)
+    );
+    if (isCancelled === "true") {
+      console.log(`❌ blogContentWorker for ${videoId} has been cancelled`);
+      return;
+    }
     const blogContentCompletedJobsRedisKey =
       getBlogContentCompletedJobsRedisKey(videoId);
     try {
@@ -160,7 +167,7 @@ export const blogContentWorker = new Worker(
   },
   {
     connection: redisClient,
-    concurrency: 5,
+    concurrency: BLOG_CONTENT_WORKERS,
   }
 );
 

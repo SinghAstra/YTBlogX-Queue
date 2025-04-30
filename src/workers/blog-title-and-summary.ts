@@ -1,17 +1,17 @@
 import { Blog, VideoStatus } from "@prisma/client";
 import { Worker } from "bullmq";
-import { QUEUES } from "../lib/constants.js";
+import { CONCURRENT_WORKERS, QUEUES } from "../lib/constants.js";
 import {
   generateTitleAndSummaries,
   generateVideoOverview,
 } from "../lib/gemini.js";
 import { prisma } from "../lib/prisma.js";
-import { sendProcessingUpdate } from "../lib/pusher/send-update.js";
 import {
   getBlogContentCompletedJobsRedisKey,
   getBlogContentTotalJobsRedisKey,
   getBlogTitleAndSummaryCompletedJobsRedisKey,
   getBlogTitleAndSummaryTotalJobsRedisKey,
+  getVideoCancelledRedisKey,
 } from "../lib/redis-keys.js";
 import redisClient from "../lib/redis.js";
 import { blogContentQueue, logQueue } from "../queue/index.js";
@@ -27,7 +27,7 @@ async function updateTitlesAndSummaries(
       {
         videoId,
         status: VideoStatus.PROCESSING,
-        message: `✍️ Generating summary for ${summary.title}`,
+        message: `✍️ Generating title and summary for ${summary.title}`,
       },
       {
         attempts: 3,
@@ -115,7 +115,7 @@ async function checkAllJobsCompleted(videoId: string) {
     blogs.map(async (blog) => {
       await blogContentQueue.add(
         QUEUES.BLOG_CONTENT,
-        { blog },
+        { blog, videoId },
         {
           attempts: 3,
           backoff: {
@@ -131,7 +131,17 @@ async function checkAllJobsCompleted(videoId: string) {
 export const blogTitleAndSummaryWorker = new Worker(
   QUEUES.BLOG_TITLE_AND_SUMMARY,
   async (job) => {
+    console.log("In blogTitleAndSummaryWorker");
     const { videoId } = job.data;
+    const isCancelled = await redisClient.get(
+      getVideoCancelledRedisKey(videoId)
+    );
+    if (isCancelled === "true") {
+      console.log(
+        `❌ blogTitleAndSummaryWorker for ${videoId} has been cancelled`
+      );
+      return;
+    }
     const blogTitleAndSummaryCompletedJobsRedisKey =
       getBlogTitleAndSummaryCompletedJobsRedisKey(videoId);
 
@@ -184,7 +194,7 @@ export const blogTitleAndSummaryWorker = new Worker(
   },
   {
     connection: redisClient,
-    concurrency: 5,
+    concurrency: CONCURRENT_WORKERS,
   }
 );
 

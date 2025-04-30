@@ -25,3 +25,7 @@ export function getGeminiTokensConsumedThisMinuteRedisKey() {
   const currentMinute = Math.floor(now / 60000);
   return `${currentMinute}:rateLimitGeminiTokensConsumed`;
 }
+
+export function getVideoCancelledRedisKey(videoId: string) {
+  return `${videoId}:cancelled`;
+}

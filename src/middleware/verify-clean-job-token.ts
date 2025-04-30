@@ -31,6 +31,8 @@ export default function verifyCleanJobToken(
       process.env.SERVICE_JWT_SECRET
     ) as AuthPayload;
     req.body.auth = decoded;
+
+    console.log("req.body.auth is ", req.body.auth);
     next();
   } catch (error) {
     res.status(401).json({ message: "Invalid or expired token" });

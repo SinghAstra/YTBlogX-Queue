@@ -2,6 +2,7 @@ import { VideoStatus } from "@prisma/client";
 import { Worker } from "bullmq";
 import {
   BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY,
+  CONCURRENT_WORKERS,
   QUEUES,
 } from "../lib/constants.js";
 import { prisma } from "../lib/prisma.js";
@@ -28,7 +29,10 @@ const fetchProxies = async () => {
     const proxyList = data.split("\n").filter((proxy) => proxy.trim());
     return proxyList;
   } catch (error) {
-    console.error("Error fetching proxies:", error);
+    if (error instanceof Error) {
+      console.log("error.stack is ", error.stack);
+      console.log("error.message is ", error.message);
+    }
     return [];
   }
 };
@@ -66,6 +70,7 @@ export const videoWorker = new Worker(
         }
       );
       const data = await response.text();
+      console.log("data is ", data);
 
       const pattern = /ytInitialPlayerResponse\s*=\s*({.+?});/;
       const match = data.match(pattern);
@@ -85,6 +90,22 @@ export const videoWorker = new Worker(
         throw new Error("No captions found");
       }
 
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.PENDING,
+          message: "🔍 Looking for English subtitles...",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
+
       // 2. Find the English ASR track
       const transcriptTrack = tracks.find((t: any) => t.languageCode === "en");
 
@@ -96,9 +117,41 @@ export const videoWorker = new Worker(
 
       console.log("transcriptUrl is ", transcriptUrl);
 
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.PENDING,
+          message: "🌐 Fetching transcript data from YouTube...",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
+
       // 3. Fetch the transcript
       const transcriptRes = await fetch(transcriptUrl);
       const transcriptJson = await transcriptRes.json();
+
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.PENDING,
+          message: "📜 Transcript fetched. Cleaning up the text...",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
 
       // 4. Extract text lines
       let transcript: string = "";
@@ -109,6 +162,22 @@ export const videoWorker = new Worker(
           transcript += text.trim().replace(/[^\x00-\x7F]/g, "") + " ";
         }
       }
+
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
+          status: VideoStatus.PENDING,
+          message: "📚 Splitting transcript into blog-sized chunks...",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
 
       const transcriptChunks = splitTranscript(transcript);
 
@@ -144,8 +213,24 @@ export const videoWorker = new Worker(
         QUEUES.LOG,
         {
           videoId,
+          status: VideoStatus.PENDING,
+          message: "📝 Saved transcript chunks as blog entries.",
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+        }
+      );
+
+      await logQueue.add(
+        QUEUES.LOG,
+        {
+          videoId,
           status: VideoStatus.PROCESSING,
-          message: "🧠 Generating blog summaries...  ",
+          message: "📦 Preparing batches to generate titles and summaries...",
         },
         {
           attempts: 3,
@@ -215,7 +300,7 @@ export const videoWorker = new Worker(
           status: VideoStatus.FAILED,
           message:
             error instanceof Error
-              ? error.message
+              ? `⚠️ ${error.message}`
               : "⚠️ Oops! Something went wrong. Please try again later. ",
         },
         {
@@ -230,7 +315,7 @@ export const videoWorker = new Worker(
   },
   {
     connection: redisClient,
-    concurrency: 5,
+    concurrency: CONCURRENT_WORKERS,
   }
 );
 

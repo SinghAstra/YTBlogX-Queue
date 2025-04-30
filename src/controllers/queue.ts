@@ -6,15 +6,12 @@ import { logQueue, videoQueue } from "../queue";
 export const addToVideoQueue = async (req: Request, res: Response) => {
   try {
     const { videoId, userId } = req.body.auth;
-    console.log("req.body.auth --videoQueueController is ", req.body.auth);
-
-    console.log("Before videoQueue.");
 
     await logQueue.add(
       QUEUES.LOG,
       {
         videoId,
-        status: VideoStatus.FAILED,
+        status: VideoStatus.PENDING,
         message: "🎥We're downloading the transcript. Hang tight! ",
       },
       {
@@ -25,8 +22,6 @@ export const addToVideoQueue = async (req: Request, res: Response) => {
         },
       }
     );
-
-    console.log("After sendProcessingUpdate.");
 
     await videoQueue.add(
       QUEUES.VIDEO,
@@ -42,8 +37,6 @@ export const addToVideoQueue = async (req: Request, res: Response) => {
         },
       }
     );
-
-    console.log("After videoQueue.add.");
 
     res.status(200).json({ success: true });
   } catch (error) {

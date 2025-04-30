@@ -5,4 +5,6 @@ export const QUEUES = {
   LOG: "log-queue",
 };
 
-export const BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY = 10;
+export const BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY = 3;
+export const CONCURRENT_WORKERS = 5;
+export const BLOG_CONTENT_WORKERS = 4;
