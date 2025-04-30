@@ -73,8 +73,8 @@ export const videoWorker = new Worker(
           },
         }
       );
-      console.log("response is ", response);
-      const data = await response.text();
+      const buffer = await response.arrayBuffer();
+      const data = new TextDecoder("utf-8").decode(buffer);
       console.log("data is ", data);
 
       const pattern = /ytInitialPlayerResponse\s*=\s*({.+?});/;
