@@ -42,6 +42,7 @@ export const videoWorker = new Worker(
   async (job) => {
     console.log("In video Worker.");
     const { videoId } = job.data;
+    console.log("videoId is ", videoId);
 
     const blogTitleAndSummaryTotalJobsRedisKey =
       getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
@@ -52,11 +53,14 @@ export const videoWorker = new Worker(
         where: { id: videoId },
       });
 
+      console.log("video is ", video);
+
       if (!video) {
         throw new Error("Video Not Found.");
       }
 
       const proxies = await fetchProxies();
+      console.log("proxies.length is ", proxies.length);
 
       const proxy = proxies[Math.floor(Math.random() * proxies.length)];
 
@@ -69,6 +73,7 @@ export const videoWorker = new Worker(
           },
         }
       );
+      console.log("response is ", response);
       const data = await response.text();
       console.log("data is ", data);
 
