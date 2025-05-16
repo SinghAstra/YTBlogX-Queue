@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 interface AuthPayload {
   videoId: string;
   userId: string;
+  transcriptUrl:string;
 }
 
 export function verifyServiceToken(

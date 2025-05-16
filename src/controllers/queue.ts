@@ -5,14 +5,14 @@ import { logQueue, videoQueue } from "../queue";
 
 export const addToVideoQueue = async (req: Request, res: Response) => {
   try {
-    const { videoId, userId } = req.body.auth;
+    const { videoId, userId,transcriptUrl } = req.body.auth;
 
     await logQueue.add(
       QUEUES.LOG,
       {
         videoId,
         status: VideoStatus.PENDING,
-        message: "🎥We're downloading the transcript. Hang tight! ",
+        message: "🎥 We're downloading the transcript. Hang tight! ",
       },
       {
         attempts: 3,
@@ -28,6 +28,7 @@ export const addToVideoQueue = async (req: Request, res: Response) => {
       {
         videoId,
         userId,
+        transcriptUrl
       },
       {
         attempts: 3,

@@ -16,33 +16,13 @@ import { blogTitleAndSummaryQueue, logQueue } from "../queue/index.js";
 
 const batchSize = BATCH_SIZE_FOR_BLOG_TITLE_AND_SUMMARY;
 
-const fetchProxies = async () => {
-  try {
-    const response = await fetch(
-      "https://www.proxyscrape.com/free-proxy-list",
-      {
-        method: "GET",
-      }
-    );
-    const data = await response.text();
-    // Parse the proxies (example: split by line and filter out unwanted formats)
-    const proxyList = data.split("\n").filter((proxy) => proxy.trim());
-    return proxyList;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.log("error.stack is ", error.stack);
-      console.log("error.message is ", error.message);
-    }
-    return [];
-  }
-};
-
 export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
     console.log("In video Worker.");
-    const { videoId } = job.data;
+    const { videoId, transcriptUrl } = job.data;
     console.log("videoId is ", videoId);
+    console.log("transcriptUrl is ", transcriptUrl);
 
     const blogTitleAndSummaryTotalJobsRedisKey =
       getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
@@ -57,42 +37,6 @@ export const videoWorker = new Worker(
 
       if (!video) {
         throw new Error("Video Not Found.");
-      }
-
-      const proxies = await fetchProxies();
-      console.log("proxies.length is ", proxies.length);
-
-      const proxy = proxies[Math.floor(Math.random() * proxies.length)];
-
-      const response = await fetch(
-        `https://www.youtube.com/watch?v=${video.youtubeId}`,
-        {
-          method: "GET",
-          headers: {
-            Proxy: `http://${proxy}`,
-          },
-        }
-      );
-      const buffer = await response.arrayBuffer();
-      const data = new TextDecoder("utf-8").decode(buffer);
-      console.log("data is ", data);
-
-      const pattern = /ytInitialPlayerResponse\s*=\s*({.+?});/;
-      const match = data.match(pattern);
-
-      if (!match || !match[1]) {
-        throw new Error("ytInitialPlayerResponse not found");
-      }
-
-      const playerResponse = JSON.parse(match[1]);
-
-      // 1. Get caption tracks
-      const tracks =
-        playerResponse?.captions?.playerCaptionsTracklistRenderer
-          ?.captionTracks;
-
-      if (!tracks || tracks.length === 0) {
-        throw new Error("No captions found");
       }
 
       await logQueue.add(
@@ -111,16 +55,15 @@ export const videoWorker = new Worker(
         }
       );
 
-      // 2. Find the English ASR track
-      const transcriptTrack = tracks.find((t: any) => t.languageCode === "en");
+      // transcriptArray is an array of { text, start, duration }
 
-      if (!transcriptTrack) {
-        throw new Error("English transcript not found");
-      }
+      const transcriptRes = await fetch(
+        `https://www.youtube.com${transcriptUrl}`
+      );
 
-      const transcriptUrl = transcriptTrack.baseUrl + "&fmt=json3";
+      console.log("transcriptRes is ", transcriptRes);
 
-      console.log("transcriptUrl is ", transcriptUrl);
+      const transcriptJson = await transcriptRes.json();
 
       await logQueue.add(
         QUEUES.LOG,
@@ -138,10 +81,6 @@ export const videoWorker = new Worker(
         }
       );
 
-      // 3. Fetch the transcript
-      const transcriptRes = await fetch(transcriptUrl);
-      const transcriptJson = await transcriptRes.json();
-
       await logQueue.add(
         QUEUES.LOG,
         {
@@ -158,7 +97,6 @@ export const videoWorker = new Worker(
         }
       );
 
-      // 4. Extract text lines
       let transcript: string = "";
       for (const event of transcriptJson.events || []) {
         if (event.segs) {
