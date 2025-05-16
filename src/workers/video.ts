@@ -55,11 +55,12 @@ export const videoWorker = new Worker(
         }
       );
 
-      // transcriptArray is an array of { text, start, duration }
+      const transcriptUrlInitial = "https://www.youtube.com";
+      const parsedTranscriptUrl = transcriptUrl.startsWith(transcriptUrlInitial)
+        ? transcriptUrl
+        : `${transcriptUrlInitial}${transcriptUrl}`;
 
-      const transcriptRes = await fetch(
-        `https://www.youtube.com${transcriptUrl}`
-      );
+      const transcriptRes = await fetch(parsedTranscriptUrl);
 
       console.log("transcriptRes is ", transcriptRes);
 
