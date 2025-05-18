@@ -5,7 +5,7 @@ import { logQueue, videoQueue } from "../queue";
 
 export const addToVideoQueue = async (req: Request, res: Response) => {
   try {
-    const { videoId, userId,transcriptUrl } = req.body.auth;
+    const { videoId, userId } = req.body.auth;
 
     await logQueue.add(
       QUEUES.LOG,
@@ -28,7 +28,6 @@ export const addToVideoQueue = async (req: Request, res: Response) => {
       {
         videoId,
         userId,
-        transcriptUrl
       },
       {
         attempts: 3,

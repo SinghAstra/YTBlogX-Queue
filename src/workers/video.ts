@@ -20,9 +20,8 @@ export const videoWorker = new Worker(
   QUEUES.VIDEO,
   async (job) => {
     console.log("In video Worker.");
-    const { videoId, transcriptUrl } = job.data;
+    const { videoId, userId } = job.data;
     console.log("videoId is ", videoId);
-    console.log("transcriptUrl is ", transcriptUrl);
 
     const blogTitleAndSummaryTotalJobsRedisKey =
       getBlogTitleAndSummaryTotalJobsRedisKey(videoId);
@@ -55,58 +54,6 @@ export const videoWorker = new Worker(
         }
       );
 
-      const transcriptUrlInitial = "https://www.youtube.com";
-      const parsedTranscriptUrl = transcriptUrl.startsWith(transcriptUrlInitial)
-        ? transcriptUrl
-        : `${transcriptUrlInitial}${transcriptUrl}`;
-
-      const transcriptRes = await fetch(parsedTranscriptUrl);
-
-      console.log("transcriptRes is ", transcriptRes);
-
-      const transcriptJson = await transcriptRes.json();
-
-      await logQueue.add(
-        QUEUES.LOG,
-        {
-          videoId,
-          status: VideoStatus.PENDING,
-          message: "🌐 Fetching transcript data from YouTube...",
-        },
-        {
-          attempts: 3,
-          backoff: {
-            type: "exponential",
-            delay: 5000,
-          },
-        }
-      );
-
-      await logQueue.add(
-        QUEUES.LOG,
-        {
-          videoId,
-          status: VideoStatus.PENDING,
-          message: "📜 Transcript fetched. Cleaning up the text...",
-        },
-        {
-          attempts: 3,
-          backoff: {
-            type: "exponential",
-            delay: 5000,
-          },
-        }
-      );
-
-      let transcript: string = "";
-      for (const event of transcriptJson.events || []) {
-        if (event.segs) {
-          const text = event.segs.map((seg: any) => seg.utf8).join("");
-          if (text.trim() === "") continue;
-          transcript += text.trim().replace(/[^\x00-\x7F]/g, "") + " ";
-        }
-      }
-
       await logQueue.add(
         QUEUES.LOG,
         {
@@ -123,7 +70,7 @@ export const videoWorker = new Worker(
         }
       );
 
-      const transcriptChunks = splitTranscript(transcript);
+      const transcriptChunks = splitTranscript(video.transcript);
 
       await logQueue.add(
         QUEUES.LOG,

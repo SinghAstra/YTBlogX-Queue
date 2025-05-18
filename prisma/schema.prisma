@@ -17,6 +17,7 @@ model Account {
   refresh_token     String?
   access_token      String?
   expires_at        Int?
+  refresh_token_expires_in Int?
   token_type        String?
   scope             String?
   id_token          String?
@@ -58,15 +59,16 @@ model Video {
   youtubeId        String
   title            String
   channelName      String
+  videoThumbnail   String
+  channelThumbnail String
   duration         String
-  createdAt        DateTime    @default(now())
+  transcript       String
   userId           String
   overview         String?
-  channelThumbnail String
-  videoThumbnail   String
+  createdAt        DateTime    @default(now())
   status           VideoStatus @default(PENDING)
   blogs            Blog[]
-  logs             Log[]
+  logs              Log[]
   user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -74,25 +76,25 @@ model Video {
 
 model Blog {
   id         String   @id @default(cuid())
+  part       Int
   videoId    String
   title      String?
   transcript String
   content    String?
   createdAt  DateTime @default(now())
   summary    String?
-  part       Int
   video      Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@index([videoId])
 }
 
 model Log {
-  id        String      @id @default(cuid())
+  id        String     @id @default(cuid())
   videoId   String
   message   String
   status    VideoStatus
   createdAt DateTime    @default(now())
-  video     Video       @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  Video     Video       @relation(fields: [videoId], references: [id], onDelete: Cascade)
 }
 
 enum VideoStatus {
