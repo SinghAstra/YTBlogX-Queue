@@ -20,12 +20,6 @@ export function getGeminiRequestsThisMinuteRedisKey() {
   return `${currentMinute}:rateLimitGeminiRequests`;
 }
 
-export function getGeminiTokensConsumedThisMinuteRedisKey() {
-  const now = Date.now();
-  const currentMinute = Math.floor(now / 60000);
-  return `${currentMinute}:rateLimitGeminiTokensConsumed`;
-}
-
 export function getVideoCancelledRedisKey(videoId: string) {
   return `${videoId}:cancelled`;
 }

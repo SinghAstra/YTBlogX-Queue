@@ -1,10 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "./prisma";
 import redis from "./redis";
-import {
-  getGeminiRequestsThisMinuteRedisKey,
-  getGeminiTokensConsumedThisMinuteRedisKey,
-} from "./redis-keys";
+import { getGeminiRequestsThisMinuteRedisKey } from "./redis-keys";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
@@ -15,19 +12,14 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const REQUEST_LIMIT = 15;
-const TOKEN_LIMIT = 800000;
 
-export async function trackRequest(tokenCount: number) {
+export async function trackRequest() {
   const geminiRequestsCountKey = getGeminiRequestsThisMinuteRedisKey();
-  const geminiRequestsTokenConsumedKey =
-    getGeminiTokensConsumedThisMinuteRedisKey();
 
   const result = await redis
     .multi()
     .incr(geminiRequestsCountKey)
-    .incrby(geminiRequestsTokenConsumedKey, tokenCount)
     .expire(geminiRequestsCountKey, 60)
-    .expire(geminiRequestsTokenConsumedKey, 60)
     .exec();
 
   if (!result) {
@@ -46,19 +38,12 @@ export async function trackRequest(tokenCount: number) {
 
 export async function checkLimits() {
   const geminiRequestsCountKey = getGeminiRequestsThisMinuteRedisKey();
-  const geminiRequestsTokenConsumedKey =
-    getGeminiTokensConsumedThisMinuteRedisKey();
 
-  const [requests, tokens] = await redis.mget(
-    geminiRequestsCountKey,
-    geminiRequestsTokenConsumedKey
-  );
+  const requests = await redis.get(geminiRequestsCountKey);
 
   return {
     requests: parseInt(requests ?? "0"),
-    tokens: parseInt(tokens ?? "0"),
     requestsExceeded: parseInt(requests ?? "0") >= REQUEST_LIMIT,
-    tokensExceeded: parseInt(tokens ?? "0") >= TOKEN_LIMIT,
   };
 }
 
@@ -67,27 +52,20 @@ async function sleep(time: number) {
   await new Promise((resolve) => setTimeout(resolve, time * 2000));
 }
 
-export async function estimateTokenCount(
-  prompt: string,
-  maxOutputTokens = 1000
-) {
-  return Math.ceil(prompt.length / 4) + maxOutputTokens;
-}
-
-export async function handleRateLimit(tokenCount: number) {
+export async function handleRateLimit() {
   const limitsResponse = await checkLimits();
 
   console.log("--------------------------------------");
   console.log("limitsResponse:", limitsResponse);
   console.log("--------------------------------------");
 
-  const { requestsExceeded, tokensExceeded } = limitsResponse;
+  const { requestsExceeded } = limitsResponse;
 
-  if (requestsExceeded || tokensExceeded) {
+  if (requestsExceeded) {
     await sleep(2);
   }
 
-  await trackRequest(tokenCount);
+  await trackRequest();
 }
 
 async function handleRequestExceeded() {
@@ -131,9 +109,7 @@ export async function generateTitleAndSummaries(
       ${JSON.stringify(transcriptBatch)}
       `;
 
-      const tokenCount = await estimateTokenCount(prompt);
-
-      await handleRateLimit(tokenCount);
+      await handleRateLimit();
 
       const result = await model.generateContent(prompt);
       let rawResponse = result.response.text();
@@ -238,9 +214,7 @@ export async function generateVideoOverview(videoId: string) {
       ${summariesText}
     `;
 
-      const tokenCount = await estimateTokenCount(prompt);
-
-      await handleRateLimit(tokenCount);
+      await handleRateLimit();
 
       // Generate the overview using Gemini API
       const result = await model.generateContent(prompt);
@@ -298,9 +272,7 @@ export async function generateBlogContent(
       Return only the markdown content with no additional text or explanations.
     `;
 
-      const tokenCount = await estimateTokenCount(prompt);
-
-      await handleRateLimit(tokenCount);
+      await handleRateLimit();
 
       const result = await model.generateContent(prompt);
 
