@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
-import { QUEUES } from "../lib/constants";
-import redisClient from "../lib/redis";
+import { QUEUES } from "../lib/constants.js";
+import redisClient from "../lib/redis.js";
 
 export const videoQueue = new Queue(QUEUES.VIDEO, {
   connection: redisClient,

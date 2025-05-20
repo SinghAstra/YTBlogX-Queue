@@ -1,7 +1,7 @@
 import { VideoStatus } from "@prisma/client";
 import { Request, Response } from "express";
-import { QUEUES } from "../lib/constants";
-import { logQueue, videoQueue } from "../queue";
+import { QUEUES } from "../lib/constants.js";
+import { logQueue, videoQueue } from "../queue/index.js";
 
 export const addToVideoQueue = async (req: Request, res: Response) => {
   try {

@@ -1,7 +1,7 @@
-import express, { Request, Response } from "express";
+import express from "express";
 
-import cleanRoutes from "./routes/clean";
-import queueRoutes from "./routes/queue";
+import cleanRoutes from "./routes/clean.js";
+import queueRoutes from "./routes/queue.js";
 
 const app = express();
 const PORT = 5000;

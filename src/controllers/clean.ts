@@ -1,9 +1,9 @@
 import { Queue } from "bullmq";
 import { Request, Response } from "express";
-import { cancelAllVideoJobs } from "../lib/cancel-jobs";
-import { QUEUES } from "../lib/constants";
-import { prisma } from "../lib/prisma";
-import redisClient from "../lib/redis";
+import { cancelAllVideoJobs } from "../lib/cancel-jobs.js";
+import { QUEUES } from "../lib/constants.js";
+import { prisma } from "../lib/prisma.js";
+import redisClient from "../lib/redis.js";
 
 export const cleanJobs = async (_req: Request, res: Response) => {
   try {

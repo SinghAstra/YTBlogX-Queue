@@ -16,28 +16,26 @@ import {
 import redisClient from "../lib/redis.js";
 import { blogContentQueue, logQueue } from "../queue/index.js";
 
-// Function to update summaries in the database
 async function updateTitlesAndSummaries(
   summaries: { id: string; summary: string; title: string }[],
   videoId: string
 ) {
-  summaries.map(async (summary) => {
-    await logQueue.add(
-      QUEUES.LOG,
-      {
-        videoId,
-        status: VideoStatus.PROCESSING,
-        message: `✍️ Generating title and summary for ${summary.title}`,
+  await logQueue.add(
+    QUEUES.LOG,
+    {
+      videoId,
+      status: VideoStatus.PROCESSING,
+      message: `✍️ Generating summary for ${summaries[0].title}`,
+    },
+    {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5000,
       },
-      {
-        attempts: 3,
-        backoff: {
-          type: "exponential",
-          delay: 5000,
-        },
-      }
-    );
-  });
+    }
+  );
+
   const updatePromises = summaries.map(({ id, summary, title }) => {
     return prisma.blog.update({
       where: { id },
