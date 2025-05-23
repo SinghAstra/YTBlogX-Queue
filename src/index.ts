@@ -1,5 +1,6 @@
-import express from "express";
+import express, { Request, Response } from "express";
 
+import redisClient from "./lib/redis.js";
 import cleanRoutes from "./routes/clean.js";
 import queueRoutes from "./routes/queue.js";
 
@@ -8,10 +9,23 @@ const PORT = 5000;
 
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "Server is up and running.",
-  });
+app.get("/", async (req: Request, res: Response) => {
+  console.log("Request made to / endpoint");
+  try {
+    const pong = await redisClient.ping();
+    res.status(200).json({
+      message: "Service is up",
+      redis: pong,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      console.log("error.stack is ", error.stack);
+      console.log("error.message is ", error.message);
+    }
+    res.status(500).json({
+      message: "Service is up, but Redis connection failed",
+    });
+  }
 });
 app.use("/api/queue", queueRoutes);
 app.use("/api/clean", cleanRoutes);
