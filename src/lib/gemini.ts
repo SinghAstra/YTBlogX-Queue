@@ -322,6 +322,16 @@ export async function generateBlogContent(
         continue;
       }
 
+      if (
+        error instanceof Error &&
+        error.message.includes("429 Too Many Requests")
+      ) {
+        console.log(`Trying again for ${i + 1} time --generateBlogContent`);
+        await handleRequestExceeded();
+        sleep(i + 1);
+        continue;
+      }
+
       throw new Error(
         error instanceof Error
           ? error.message
