@@ -80,6 +80,7 @@ Create a detailed, friendly, and beginner-focused **markdown blog post** that ex
 
 ⚠️ Output Rules:
 - Return **only valid markdown content**
+- Keep all **headings clean** — do **not** include colons (:) or special characters in headings. Use only plain descriptive text.
 
 🧑‍🏫 Tone:
 Friendly, clear, encouraging, and technically accurate.
